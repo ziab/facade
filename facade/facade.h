@@ -3,6 +3,7 @@
 #include <any>
 #include <unordered_map>
 #include <chrono>
+#include <functional>
 
 #define FACADE_METHOD(_name) \
 template<typename ...t_args>\
@@ -11,6 +12,7 @@ auto _name(t_args&& ... args)\
     return call_method(\
         m_impl,\
         &t_impl_type::_name,\
+        #_name,\
         std::forward<t_args>(args)...);\
 }\
 
@@ -22,7 +24,8 @@ namespace facade
 {
     struct method_call
     {
-        std::vector<std::any> args;
+        std::vector<std::any> pre_args;
+        std::vector<std::any> post_args;
         std::any ret;
         std::chrono::time_point<std::chrono::system_clock> timestamp;
     };
@@ -35,10 +38,50 @@ namespace facade
         t_type& m_impl;
         std::unordered_map<std::string, std::vector<method_call>> m_calls;
 
-        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method(t_obj& obj, t_ret(t_obj::* method)(t_expected_args...), t_actual_args&& ... args)
+        inline void visit_args_impl(std::vector<std::any>& arg_storage)
         {
-            return (obj.*method)(std::forward<t_actual_args>(args)...);
+            /* end of variadic recursion */
+        }
+
+        template <typename t, typename ...t_args>
+        void visit_args_impl(std::vector<std::any>& arg_storage, t&& head, t_args&& ... tail)
+        {
+            arg_storage.emplace_back(head);
+            visit_args_impl(arg_storage, tail...);
+        }
+
+        template <typename ...t_args>
+        void visit_args(std::vector<std::any>& arg_storage, t_args&& ... args)
+        {
+            visit_args_impl(arg_storage, std::forward<t_args>(args)...);
+        }
+
+        template<typename ...t_args>
+        void pre_call(t_args&& ... args)
+        {
+            std::vector<std::any> pre_args;
+            visit_args(pre_args, std::forward<t_args>(args)...);
+        }
+
+        template<typename t_ret, typename ...t_args>
+        void post_call(t_ret&& ret, t_args&& ... args)
+        {
+            std::vector<std::any> pre_args;
+            visit_args(pre_args, std::forward<t_args>(args)...);
+        }
+
+        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_method(
+            t_obj& obj, 
+            t_ret(t_obj::* method)(t_expected_args...), 
+            const std::string& method_name, 
+            t_actual_args&& ... args)
+        {
+            method_call this_call{};
+            pre_call(std::forward<t_actual_args>(args)...);
+            const auto ret = (obj.*method)(std::forward<t_actual_args>(args)...);
+            post_call(ret, std::forward<t_actual_args>(args)...);
+            return ret;
         }
 
     public:
