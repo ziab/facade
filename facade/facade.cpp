@@ -32,8 +32,10 @@ int main()
     auto impl = std::make_unique<foo>();
     foo_facade foo{ std::move(impl) };
 
-    foo.do_stuff(false, 3, "hello!");
-    foo.do_stuff(true, 42, "hello again!");
+    foo.do_stuff(false, 3, std::string{ "hello!" });
+    foo.do_stuff(true, 42, std::string{ "hello again!" });
     foo.no_input_function();
+
+    foo.write_calls("calls.json");
 	return 0;
 }
