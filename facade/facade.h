@@ -42,18 +42,51 @@ namespace cereal
         archive(
             cereal::make_nvp("pre_args", call->pre_args.str()),
             cereal::make_nvp("post_args", call->post_args.str()),
-            cereal::make_nvp("ret", call->ret.str()));
+            cereal::make_nvp("ret", call->ret.str()),
+            cereal::make_nvp("duration", call->duration));
     }
 }
 
 namespace facade
 {
+    using t_resolution = std::chrono::microseconds;
     using t_cereal_archive = cereal::JSONOutputArchive;
+
+    class timer
+    {
+        std::chrono::time_point<std::chrono::system_clock> m_time_started;
+
+    public:
+
+        timer(const timer&) = delete;
+        timer& operator= (const timer&) = delete;
+        timer& operator=(timer&& that) noexcept
+        {
+            m_time_started = std::move(that.m_time_started);
+            return *this;
+        }
+
+        timer()
+        {
+            m_time_started = std::chrono::system_clock::now();
+        }
+
+        template <typename t_duration = t_resolution>
+        uint64_t get_duration() const
+        {
+            const auto now = std::chrono::system_clock::now();
+            const auto duration = std::chrono::duration_cast<t_duration>(now - m_time_started);
+            return duration.count();
+        }
+    };
+
     struct method_call
     {
         std::stringstream pre_args;
         std::stringstream post_args;
         std::stringstream ret;
+        uint64_t offest_since_epoch;
+        uint64_t duration;
     };
 
     template <typename t_visitor>
@@ -115,16 +148,17 @@ namespace facade
             const std::string& method_name,
             t_actual_args&& ... args)
         {
-            const auto this_call = new method_call;
+            auto this_call = std::make_unique<method_call>();
             record_pre_call(*this_call, std::forward<t_actual_args>(args)...);
-
+            timer timer;
             const auto ret = (obj.*method)(std::forward<t_actual_args>(args)...);
+            this_call->duration = timer.get_duration();
             record_return(*this_call, ret);
             record_post_call(*this_call, std::forward<t_actual_args>(args)...);
 
             {
                 t_lock_guard lg(m_mtx);
-                m_calls[method_name].emplace_back(this_call);
+                m_calls[method_name].emplace_back(std::move(this_call));
             }
             return ret;
         }
