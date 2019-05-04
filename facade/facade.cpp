@@ -27,6 +27,18 @@ public:
     FACADE_METHOD(no_input_function);
 };
 
+void print_json(const std::filesystem::path& path)
+{
+    std::ifstream ifs{ path };
+    while (ifs.good())
+    {
+        char c;
+        ifs.read(&c, 1);
+        std::cout << c;
+    }
+    std::cout << std::endl;
+}
+
 int main()
 {
     auto impl = std::make_unique<foo>();
@@ -37,5 +49,7 @@ int main()
     foo.no_input_function();
 
     foo.write_calls("calls.json");
+    print_json("calls.json");
+    system("pause");
 	return 0;
 }

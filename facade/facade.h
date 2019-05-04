@@ -9,6 +9,8 @@
 #include <string>
 #include <filesystem>
 
+#include "utils.h"
+
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
@@ -28,6 +30,7 @@ auto _name(t_args&& ... args)\
 #define FACADE_CONSTRUCTOR(_name) \
 _name(t_impl_type& impl) : facade(#_name, impl) {}\
 _name(std::unique_ptr<t_impl_type> ptr) : facade(#_name, std::move(ptr)) {}\
+_name(const std::filesystem::path& file) : facade(#_name, file) {}\
 
 namespace facade
 {
@@ -51,34 +54,6 @@ namespace facade
 {
     using t_resolution = std::chrono::microseconds;
     using t_cereal_archive = cereal::JSONOutputArchive;
-
-    class timer
-    {
-        std::chrono::time_point<std::chrono::system_clock> m_time_started;
-
-    public:
-
-        timer(const timer&) = delete;
-        timer& operator= (const timer&) = delete;
-        timer& operator=(timer&& that) noexcept
-        {
-            m_time_started = std::move(that.m_time_started);
-            return *this;
-        }
-
-        timer()
-        {
-            m_time_started = std::chrono::system_clock::now();
-        }
-
-        template <typename t_duration = t_resolution>
-        uint64_t get_duration() const
-        {
-            const auto now = std::chrono::system_clock::now();
-            const auto duration = std::chrono::duration_cast<t_duration>(now - m_time_started);
-            return duration.count();
-        }
-    };
 
     struct method_call
     {
@@ -108,12 +83,40 @@ namespace facade
         visit_args_impl(visitor, std::forward<t_args>(args)...);
     }
 
-    template<typename t_type>
-    class facade
+    class facade_base
     {
+    protected:
         std::unordered_map<std::string, std::vector<std::unique_ptr<method_call>>> m_calls;
         std::mutex m_mtx;
         std::string m_name;
+        bool m_mimicing{ false };
+    public:
+
+        bool load(const std::filesystem::path& file)
+        {
+            std::ifstream ifs(file);
+            cereal::JSONInputArchive archive{ ifs };
+        }
+
+        facade_base(std::string name) : m_name(std::move(name)) {}
+        facade_base(std::string name, const std::filesystem::path& file) : 
+            m_name(std::move(name)) 
+        {
+            load(file);
+        }
+
+        void write_calls(const std::filesystem::path& path)
+        {
+            std::ofstream ofs(path);
+            cereal::JSONOutputArchive archive{ ofs };
+            archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls));
+        }
+    };
+
+    template<typename t_type>
+    class facade : public facade_base
+    {
+
     protected:
         std::unique_ptr<t_type> m_ptr;
         t_type& m_impl;
@@ -142,7 +145,7 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method(
+        t_ret call_method_and_record(
             t_obj& obj,
             t_ret(t_obj::* method)(t_expected_args...),
             const std::string& method_name,
@@ -163,22 +166,31 @@ namespace facade
             return ret;
         }
 
+        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_method(
+            t_obj& obj,
+            t_ret(t_obj::* method)(t_expected_args...),
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            return call_method_and_record(
+                obj, method, method_name, std::forward<t_actual_args>(args)...);
+        }
+
     public:
         using t_impl_type = t_type;
 
         facade(std::string name, t_type& impl) : 
-            m_name(std::move(name)), 
+            facade_base(std::move(name)),
             m_impl(impl) {}
+
         facade(std::string name, std::unique_ptr<t_type>&& ptr) : 
-            m_name(std::move(name)), 
+            facade_base(std::move(name)),
             m_ptr(std::move(ptr)), 
             m_impl(*m_ptr) {}
 
-        void write_calls(const std::filesystem::path& path)
-        {
-            std::ofstream ofs(path);
-            cereal::JSONOutputArchive archive{ ofs };
-            archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls));
-        }
+        facade(std::string name, const std::filesystem::path& file) :
+            facade_base(std::move(name), file),
+            m_impl(*m_ptr) {}
     };
 }
