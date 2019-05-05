@@ -28,8 +28,8 @@ auto _name(t_args&& ... args)\
 }\
 
 #define FACADE_CONSTRUCTOR(_name) \
-_name(t_impl_type& impl) : facade(#_name, impl) {}\
-_name(std::unique_ptr<t_impl_type> ptr) : facade(#_name, std::move(ptr)) {}\
+_name(t_impl_type& impl, bool record) : facade(#_name, impl, record) {}\
+_name(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_name, std::move(ptr), record) {}\
 _name(const std::filesystem::path& file) : facade(#_name, file) {}\
 
 namespace facade
@@ -89,7 +89,8 @@ namespace facade
         std::unordered_map<std::string, std::vector<std::unique_ptr<method_call>>> m_calls;
         std::mutex m_mtx;
         std::string m_name;
-        bool m_mimicing{ false };
+        const bool m_mimicing{ false };
+        const bool m_recording{ false };
     public:
 
         bool load(const std::filesystem::path& file)
@@ -99,8 +100,10 @@ namespace facade
         }
 
         facade_base(std::string name) : m_name(std::move(name)) {}
+
         facade_base(std::string name, const std::filesystem::path& file) : 
-            m_name(std::move(name)) 
+            m_name(std::move(name)),
+            m_mimicing(true)
         {
             load(file);
         }
@@ -180,11 +183,11 @@ namespace facade
     public:
         using t_impl_type = t_type;
 
-        facade(std::string name, t_type& impl) : 
+        facade(std::string name, t_type& impl, bool record) : 
             facade_base(std::move(name)),
             m_impl(impl) {}
 
-        facade(std::string name, std::unique_ptr<t_type>&& ptr) : 
+        facade(std::string name, std::unique_ptr<t_type>&& ptr, bool record) :
             facade_base(std::move(name)),
             m_ptr(std::move(ptr)), 
             m_impl(*m_ptr) {}
