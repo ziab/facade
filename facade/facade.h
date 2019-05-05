@@ -41,13 +41,33 @@ namespace facade
 namespace cereal
 {
     template<class t_archive>
-    void serialize(t_archive& archive, std::unique_ptr<facade::method_call>& call)
+    void save(t_archive& archive, const std::unique_ptr<facade::method_call>& call)
     {
         archive(
             cereal::make_nvp("pre_args", call->pre_args.str()),
             cereal::make_nvp("post_args", call->post_args.str()),
             cereal::make_nvp("ret", call->ret.str()),
             cereal::make_nvp("duration", call->duration));
+    }
+
+    template<class t_archive>
+    void load(t_archive& archive, std::unique_ptr<facade::method_call>& call)
+    {
+        call = std::make_unique<facade::method_call>();
+
+        std::string pre_args_str;
+        std::string post_args_str;
+        std::string ret_str;
+
+        archive(
+            cereal::make_nvp("pre_args", pre_args_str),
+            cereal::make_nvp("post_args", post_args_str),
+            cereal::make_nvp("ret", ret_str),
+            cereal::make_nvp("duration", call->duration));
+
+        call->pre_args.str(pre_args_str);
+        call->post_args.str(post_args_str);
+        call->ret.str(ret_str);
     }
 }
 
@@ -94,10 +114,23 @@ namespace facade
         const bool m_recording{ false };
     public:
 
-        bool load(const std::filesystem::path& file)
+        void load(const std::filesystem::path& file)
         {
             std::ifstream ifs(file);
+            if (!ifs.good()) {
+                std::runtime_error{ 
+                    std::string{ "failed to load a recording: " } + file.string() };
+            }
             cereal::JSONInputArchive archive{ ifs };
+
+            std::string name;
+            archive(cereal::make_nvp("name", name));
+            if (name != m_name) {
+                std::runtime_error{
+                    std::string{ "name in the recotding is not matching: " } + name + " " + m_name };
+            }
+
+            archive(cereal::make_nvp("calls", m_calls));
         }
 
         facade_base(std::string name, bool recording) : 

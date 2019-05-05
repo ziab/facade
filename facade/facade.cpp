@@ -28,9 +28,9 @@ public:
         return 0;
     }
 
-    bool no_input_function()
+    int no_input_function()
     {
-        return true;
+        return 100500;
     }
 
     void no_input_no_return_function()
@@ -56,13 +56,27 @@ void record()
     foo.do_stuff(true, 42, std::string{ "hello again!" });
     foo.no_input_function();
     foo.no_input_no_return_function();
+    
     foo.write_calls("calls.json");
     utils::print_json("calls.json");
 }
 
+void play()
+{
+    foo_facade foo{ "calls.json" };
+    auto ret = foo.do_stuff(false, 3, std::string{ "hello!" });
+    std::cout << "foo.do_stuff returned: " << std::to_string(ret) << std::endl;
+    ret = foo.do_stuff(true, 42, std::string{ "hello again!" });
+    std::cout << "foo.do_stuff returned: " << std::to_string(ret) << std::endl;
+    ret = foo.no_input_function();
+    std::cout << "foo.no_input_function() returned: " << std::to_string(ret) << std::endl;
+
+    foo.no_input_no_return_function();
+}
 
 int main()
 {
     record();
+    play();
 	return 0;
 }
