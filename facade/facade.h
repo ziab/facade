@@ -44,9 +44,9 @@ namespace cereal
     void save(t_archive& archive, const std::unique_ptr<facade::method_call>& call)
     {
         archive(
-            cereal::make_nvp("pre_args", call->pre_args.str()),
-            cereal::make_nvp("post_args", call->post_args.str()),
-            cereal::make_nvp("ret", call->ret.str()),
+            cereal::make_nvp("pre_args", call->pre_args),
+            cereal::make_nvp("post_args", call->post_args),
+            cereal::make_nvp("ret", call->ret),
             cereal::make_nvp("duration", call->duration));
     }
 
@@ -55,19 +55,11 @@ namespace cereal
     {
         call = std::make_unique<facade::method_call>();
 
-        std::string pre_args_str;
-        std::string post_args_str;
-        std::string ret_str;
-
         archive(
-            cereal::make_nvp("pre_args", pre_args_str),
-            cereal::make_nvp("post_args", post_args_str),
-            cereal::make_nvp("ret", ret_str),
+            cereal::make_nvp("pre_args", call->pre_args),
+            cereal::make_nvp("post_args", call->post_args),
+            cereal::make_nvp("ret", call->ret),
             cereal::make_nvp("duration", call->duration));
-
-        call->pre_args.str(pre_args_str);
-        call->post_args.str(post_args_str);
-        call->ret.str(ret_str);
     }
 }
 
@@ -78,9 +70,9 @@ namespace facade
 
     struct method_call
     {
-        std::stringstream pre_args;
-        std::stringstream post_args;
-        std::stringstream ret;
+        std::string pre_args;
+        std::string post_args;
+        std::string ret;
         uint64_t offest_since_epoch;
         uint64_t duration;
     };
@@ -165,22 +157,53 @@ namespace facade
         template<typename ...t_args>
         void record_pre_call(method_call& mc, t_args&& ... args)
         {
-            t_cereal_archive archive{ mc.pre_args };
+            std::stringstream ss;
+            t_cereal_archive archive{ ss };
             visit_args(archive, std::forward<t_args>(args)...);
+            mc.pre_args = ss.str();
         }
 
         template<typename ...t_args>
         void record_post_call(method_call& mc, t_args&& ... args)
         {
-            t_cereal_archive archive{ mc.post_args };
+            std::stringstream ss;
+            t_cereal_archive archive{ ss };
             visit_args(archive, std::forward<t_args>(args)...);
+            mc.post_args = ss.str();
         }
 
         template<typename t_ret>
         void record_return(method_call& mc, t_ret&& ret)
         {
-            t_cereal_archive archive{ mc.ret };
+            std::stringstream ss;
+            t_cereal_archive archive{ ss };
             visit_args(archive, ret);
+            mc.ret = ss.str();
+        }
+
+        template<typename ...t_args>
+        void play_pre_call(std::string& pre_args, t_args&& ... args)
+        {
+            std::stringstream ss;
+            t_cereal_archive archive{ ss };
+            visit_args(archive, std::forward<t_args>(args)...);
+            pre_args = ss.str();
+        }
+
+        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_method_play(
+            t_obj& obj,
+            t_ret(t_obj::* method)(t_expected_args...),
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            std::string pre_call_args;
+            play_pre_call(pre_call_args, std::forward<t_actual_args>(args)...);
+
+            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            if constexpr (has_return) {
+                return t_ret{};
+            }
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
@@ -195,7 +218,6 @@ namespace facade
             timer timer;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             std::any ret;
-
             if constexpr (has_return) {
                 ret = (obj.*method)(std::forward<t_actual_args>(args)...);
                 record_return(*this_call, std::any_cast<t_ret>(ret));
@@ -211,19 +233,6 @@ namespace facade
             }
             if constexpr (has_return) {
                 return std::any_cast<t_ret>(ret);
-            }
-        }
-
-        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method_play(
-            t_obj& obj,
-            t_ret(t_obj::* method)(t_expected_args...),
-            const std::string& method_name,
-            t_actual_args&& ... args)
-        {
-            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
-            if constexpr (has_return) {
-                return t_ret{};
             }
         }
 
