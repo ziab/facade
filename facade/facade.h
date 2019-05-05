@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <memory>
-#include <any>
 #include <unordered_map>
 #include <chrono>
 #include <functional>
@@ -8,6 +7,8 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include <type_traits>
+#include <any>
 
 #include "utils.h"
 
@@ -157,16 +158,28 @@ namespace facade
             auto this_call = std::make_unique<method_call>();
             record_pre_call(*this_call, std::forward<t_actual_args>(args)...);
             timer timer;
-            const auto ret = (obj.*method)(std::forward<t_actual_args>(args)...);
+            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            std::any ret;
+
+            if constexpr (has_return) {
+                ret = (obj.*method)(std::forward<t_actual_args>(args)...);
+                record_return(*this_call, std::any_cast<t_ret>(ret));
+            }
+            else {
+                (obj.*method)(std::forward<t_actual_args>(args)...);
+            }
+
             this_call->duration = timer.get_duration();
-            record_return(*this_call, ret);
             record_post_call(*this_call, std::forward<t_actual_args>(args)...);
 
             {
                 t_lock_guard lg(m_mtx);
                 m_calls[method_name].emplace_back(std::move(this_call));
             }
-            return ret;
+
+            if constexpr (has_return) {
+                return std::any_cast<t_ret>(ret);
+            }
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>

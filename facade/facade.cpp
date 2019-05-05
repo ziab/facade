@@ -47,7 +47,7 @@ public:
     FACADE_METHOD(no_input_no_return_function);
 };
 
-int main()
+void record()
 {
     auto impl = std::make_unique<foo>();
     foo_facade foo{ std::move(impl), true };
@@ -55,9 +55,14 @@ int main()
     foo.do_stuff(false, 3, std::string{ "hello!" });
     foo.do_stuff(true, 42, std::string{ "hello again!" });
     foo.no_input_function();
-    //foo.no_input_no_return_function();
-
+    foo.no_input_no_return_function();
     foo.write_calls("calls.json");
     utils::print_json("calls.json");
+}
+
+
+int main()
+{
+    record();
 	return 0;
 }
