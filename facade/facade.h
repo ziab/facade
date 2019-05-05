@@ -96,6 +96,19 @@ namespace facade
         visit_args_impl(visitor, std::forward<t_args>(args)...);
     }
 
+    template<typename t_archive>
+    struct arg_unpacker
+    {
+        t_archive& archive;
+        arg_unpacker(t_archive& _archive) : archive(_archive) {};
+
+        template<typename t_arg>
+        void operator()(t_arg& arg)
+        {
+            archive(arg);
+        }
+    };
+
     class facade_base
     {
     protected:
@@ -158,8 +171,10 @@ namespace facade
         void record_pre_call(method_call& mc, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_output_archive archive{ ss };
-            visit_args(archive, std::forward<t_args>(args)...);
+            {
+                t_cereal_output_archive archive{ ss };
+                visit_args(archive, std::forward<t_args>(args)...);
+            }
             mc.pre_args = ss.str();
         }
 
@@ -167,8 +182,10 @@ namespace facade
         void record_post_call(method_call& mc, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_output_archive archive{ ss };
-            visit_args(archive, std::forward<t_args>(args)...);
+            {
+                t_cereal_output_archive archive{ ss };
+                visit_args(archive, std::forward<t_args>(args)...);
+            }
             mc.post_args = ss.str();
         }
 
@@ -176,8 +193,10 @@ namespace facade
         void record_return(method_call& mc, t_ret&& ret)
         {
             std::stringstream ss;
-            t_cereal_output_archive archive{ ss };
-            visit_args(archive, ret);
+            {
+                t_cereal_output_archive archive{ ss };
+                visit_args(archive, ret);
+            }
             mc.ret = ss.str();
         }
 
@@ -185,8 +204,10 @@ namespace facade
         void play_pre_call(std::string& pre_args, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_output_archive archive{ ss };
-            visit_args(archive, std::forward<t_args>(args)...);
+            {
+                t_cereal_output_archive archive{ ss };
+                visit_args(archive, std::forward<t_args>(args)...);
+            }
             pre_args = ss.str();
         }
 
@@ -202,7 +223,18 @@ namespace facade
 
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
-                return t_ret{};
+                t_ret ret{};
+                const auto mit = m_calls.find(method_name);
+                if (mit != m_calls.end())
+                {
+                    const auto& method_call = *mit->second.begin();
+                    std::stringstream ss;
+                    ss.str(method_call->ret);
+                    t_cereal_input_archive archive {ss};
+                    arg_unpacker unpacker(archive);
+                    visit_args(unpacker, ret);
+                }
+                return ret;
             }
         }
 
