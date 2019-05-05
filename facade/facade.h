@@ -100,9 +100,11 @@ namespace facade
             cereal::JSONInputArchive archive{ ifs };
         }
 
-        facade_base(std::string name) : m_name(std::move(name)) {}
+        facade_base(std::string name, bool recording) : 
+            m_name(std::move(name)), 
+            m_recording(recording) {}
 
-        facade_base(std::string name, const std::filesystem::path& file) : 
+        facade_base(std::string name, const std::filesystem::path& file) :
             m_name(std::move(name)),
             m_mimicing(true)
         {
@@ -168,18 +170,25 @@ namespace facade
             else {
                 (obj.*method)(std::forward<t_actual_args>(args)...);
             }
-
             this_call->duration = timer.get_duration();
             record_post_call(*this_call, std::forward<t_actual_args>(args)...);
-
             {
                 t_lock_guard lg(m_mtx);
                 m_calls[method_name].emplace_back(std::move(this_call));
             }
-
             if constexpr (has_return) {
                 return std::any_cast<t_ret>(ret);
             }
+        }
+
+        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_method_pass_through(
+            t_obj& obj,
+            t_ret(t_obj::* method)(t_expected_args...),
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            return (obj.*method)(std::forward<t_actual_args>(args)...);
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
@@ -189,19 +198,25 @@ namespace facade
             const std::string& method_name,
             t_actual_args&& ... args)
         {
-            return call_method_and_record(
-                obj, method, method_name, std::forward<t_actual_args>(args)...);
+            if (m_recording) {
+                return call_method_and_record(
+                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+            }
+            else {
+                return call_method_pass_through(
+                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+            }
         }
 
     public:
         using t_impl_type = t_type;
 
         facade(std::string name, t_type& impl, bool record) : 
-            facade_base(std::move(name)),
+            facade_base(std::move(name), record),
             m_impl(impl) {}
 
         facade(std::string name, std::unique_ptr<t_type>&& ptr, bool record) :
-            facade_base(std::move(name)),
+            facade_base(std::move(name), record),
             m_ptr(std::move(ptr)), 
             m_impl(*m_ptr) {}
 
