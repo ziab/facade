@@ -54,7 +54,6 @@ namespace cereal
     void load(t_archive& archive, std::unique_ptr<facade::method_call>& call)
     {
         call = std::make_unique<facade::method_call>();
-
         archive(
             cereal::make_nvp("pre_args", call->pre_args),
             cereal::make_nvp("post_args", call->post_args),
@@ -193,8 +192,8 @@ namespace facade
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_play(
-            t_obj& obj,
-            t_ret(t_obj::* method)(t_expected_args...),
+            t_obj&,
+            t_ret(t_obj::*)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)
         {
@@ -210,7 +209,7 @@ namespace facade
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_and_record(
             t_obj& obj,
-            t_ret(t_obj::* method)(t_expected_args...),
+            t_ret(t_obj::*method)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)
         {
