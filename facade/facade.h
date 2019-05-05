@@ -66,7 +66,8 @@ namespace cereal
 namespace facade
 {
     using t_resolution = std::chrono::microseconds;
-    using t_cereal_archive = cereal::JSONOutputArchive;
+    using t_cereal_output_archive = cereal::JSONOutputArchive;
+    using t_cereal_input_archive = cereal::JSONInputArchive;
 
     struct method_call
     {
@@ -113,7 +114,7 @@ namespace facade
                 std::runtime_error{ 
                     std::string{ "failed to load a recording: " } + file.string() };
             }
-            cereal::JSONInputArchive archive{ ifs };
+            t_cereal_input_archive archive{ ifs };
 
             std::string name;
             archive(cereal::make_nvp("name", name));
@@ -139,7 +140,7 @@ namespace facade
         void write_calls(const std::filesystem::path& path)
         {
             std::ofstream ofs(path);
-            cereal::JSONOutputArchive archive{ ofs };
+            t_cereal_output_archive archive{ ofs };
             archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls));
         }
     };
@@ -158,7 +159,7 @@ namespace facade
         void record_pre_call(method_call& mc, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_archive archive{ ss };
+            t_cereal_output_archive archive{ ss };
             visit_args(archive, std::forward<t_args>(args)...);
             mc.pre_args = ss.str();
         }
@@ -167,7 +168,7 @@ namespace facade
         void record_post_call(method_call& mc, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_archive archive{ ss };
+            t_cereal_output_archive archive{ ss };
             visit_args(archive, std::forward<t_args>(args)...);
             mc.post_args = ss.str();
         }
@@ -176,7 +177,7 @@ namespace facade
         void record_return(method_call& mc, t_ret&& ret)
         {
             std::stringstream ss;
-            t_cereal_archive archive{ ss };
+            t_cereal_output_archive archive{ ss };
             visit_args(archive, ret);
             mc.ret = ss.str();
         }
@@ -185,7 +186,7 @@ namespace facade
         void play_pre_call(std::string& pre_args, t_args&& ... args)
         {
             std::stringstream ss;
-            t_cereal_archive archive{ ss };
+            t_cereal_output_archive archive{ ss };
             visit_args(archive, std::forward<t_args>(args)...);
             pre_args = ss.str();
         }
