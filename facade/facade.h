@@ -110,7 +110,7 @@ namespace facade
         std::unordered_map<std::string, std::vector<std::unique_ptr<method_call>>> m_calls;
         std::mutex m_mtx;
         std::string m_name;
-        const bool m_mimicing{ false };
+        const bool m_playing{ false };
         const bool m_recording{ false };
     public:
 
@@ -139,7 +139,7 @@ namespace facade
 
         facade_base(std::string name, const std::filesystem::path& file) :
             m_name(std::move(name)),
-            m_mimicing(true)
+            m_playing(true)
         {
             load(file);
         }
@@ -215,6 +215,19 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_method_play(
+            t_obj& obj,
+            t_ret(t_obj::* method)(t_expected_args...),
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            if constexpr (has_return) {
+                return t_ret{};
+            }
+        }
+
+        template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_pass_through(
             t_obj& obj,
             t_ret(t_obj::* method)(t_expected_args...),
@@ -231,6 +244,11 @@ namespace facade
             const std::string& method_name,
             t_actual_args&& ... args)
         {
+            if (m_playing)
+            {
+                return call_method_play(
+                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+            }
             if (m_recording) {
                 return call_method_and_record(
                     obj, method, method_name, std::forward<t_actual_args>(args)...);

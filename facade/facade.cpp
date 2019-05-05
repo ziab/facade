@@ -20,11 +20,13 @@ namespace utils
 
 class foo
 {
+    const bool expected_param1{ true} ;
+    const int expected_param2{ 42 };
 public:
     foo() {};
     int do_stuff(bool param1, int param2, const std::string& param3)
     {
-        if (param1 == true && param2 == 42) return 1;
+        if (param1 == expected_param1 && expected_param2 == 42) return 1;
         return 0;
     }
 
