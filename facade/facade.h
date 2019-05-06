@@ -64,7 +64,7 @@ namespace cereal
 
 namespace facade
 {
-    using t_resolution = std::chrono::microseconds;
+    using t_duration_resolution = std::chrono::microseconds;
     using t_cereal_output_archive = cereal::JSONOutputArchive;
     using t_cereal_input_archive = cereal::JSONInputArchive;
 
@@ -108,6 +108,17 @@ namespace facade
             archive(arg);
         }
     };
+
+    template<typename ...t_args>
+    void unpack(const std::string& recorded, t_args&&... args)
+    {
+        if (recorded.empty()) return;
+        std::stringstream ss;
+        ss.str(recorded);
+        t_cereal_input_archive archive{ ss };
+        arg_unpacker unpacker(archive);
+        visit_args(unpacker, std::forward<t_args>(args)...);
+    }
 
     class facade_base
     {
@@ -179,14 +190,13 @@ namespace facade
         }
 
         template<typename ...t_args>
-        void play_pre_call(std::string& pre_args, t_args&& ... args)
+        void restore_args(std::string& recorded, t_args&& ... args)
         {
-            std::stringstream ss;
+            std::stringstream ss{ recorded };
             {
-                t_cereal_output_archive archive{ ss };
+                t_cereal_input_archive archive{ ss };
                 visit_args(archive, std::forward<t_args>(args)...);
             }
-            pre_args = ss.str();
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
@@ -196,24 +206,25 @@ namespace facade
             const std::string& method_name,
             t_actual_args&& ... args)
         {
+            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            const auto mit = m_calls.find(method_name);
+            if (mit == m_calls.end()) { 
+                if constexpr (has_return) { return {}; }
+                else { return; }
+            }
+
             std::string pre_call_args;
             record_args(pre_call_args, std::forward<t_actual_args>(args)...);
-
-            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            const auto& method_call = *mit->second.begin();
+            std::this_thread::sleep_for(t_duration_resolution{ method_call->duration });
+            unpack(method_call->post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
                 t_ret ret{};
-                const auto mit = m_calls.find(method_name);
-                if (mit != m_calls.end())
-                {
-                    const auto& method_call = *mit->second.begin();
-                    std::stringstream ss;
-                    ss.str(method_call->ret);
-                    t_cereal_input_archive archive {ss};
-                    arg_unpacker unpacker(archive);
-                    visit_args(unpacker, ret);
-                }
+                unpack(method_call->ret, ret);
                 return ret;
             }
+
+            if constexpr (has_return) return {};
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
