@@ -168,36 +168,14 @@ namespace facade
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
 
         template<typename ...t_args>
-        void record_pre_call(method_call& mc, t_args&& ... args)
+        void record_args(std::string& recorded, t_args&& ... args)
         {
             std::stringstream ss;
             {
                 t_cereal_output_archive archive{ ss };
                 visit_args(archive, std::forward<t_args>(args)...);
             }
-            mc.pre_args = ss.str();
-        }
-
-        template<typename ...t_args>
-        void record_post_call(method_call& mc, t_args&& ... args)
-        {
-            std::stringstream ss;
-            {
-                t_cereal_output_archive archive{ ss };
-                visit_args(archive, std::forward<t_args>(args)...);
-            }
-            mc.post_args = ss.str();
-        }
-
-        template<typename t_ret>
-        void record_return(method_call& mc, t_ret&& ret)
-        {
-            std::stringstream ss;
-            {
-                t_cereal_output_archive archive{ ss };
-                visit_args(archive, ret);
-            }
-            mc.ret = ss.str();
+            recorded = ss.str();
         }
 
         template<typename ...t_args>
@@ -219,7 +197,7 @@ namespace facade
             t_actual_args&& ... args)
         {
             std::string pre_call_args;
-            play_pre_call(pre_call_args, std::forward<t_actual_args>(args)...);
+            record_args(pre_call_args, std::forward<t_actual_args>(args)...);
 
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
@@ -246,19 +224,19 @@ namespace facade
             t_actual_args&& ... args)
         {
             auto this_call = std::make_unique<method_call>();
-            record_pre_call(*this_call, std::forward<t_actual_args>(args)...);
+            record_args(this_call->pre_args, std::forward<t_actual_args>(args)...);
             timer timer;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             std::any ret;
             if constexpr (has_return) {
                 ret = (obj.*method)(std::forward<t_actual_args>(args)...);
-                record_return(*this_call, std::any_cast<t_ret>(ret));
+                record_args(this_call->ret, std::any_cast<t_ret>(ret));
             }
             else {
                 (obj.*method)(std::forward<t_actual_args>(args)...);
             }
             this_call->duration = timer.get_duration();
-            record_post_call(*this_call, std::forward<t_actual_args>(args)...);
+            record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
             {
                 t_lock_guard lg(m_mtx);
                 m_calls[method_name].emplace_back(std::move(this_call));
