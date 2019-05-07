@@ -1,0 +1,6 @@
+[submodule "depends/cereal"]
+	path = depends/cereal
+	url = https://github.com/USCiLab/cereal.git
+[submodule "depends/digestpp"]
+	path = depends/digestpp
+	url = https://github.com/kerukuro/digestpp.git
