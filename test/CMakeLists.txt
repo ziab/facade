@@ -3,13 +3,11 @@
 #
 cmake_minimum_required (VERSION 3.8)
 
+file(GLOB_RECURSE cppfiles "*.cpp")
 # Add source to this project's executable.
-add_executable (test "facade.cpp")
+add_executable (test ${cppfiles})
 
-include_directories(
-	../facade
-    ../cereal/include
-	)
+target_link_libraries(test PRIVATE facade)
 
 # TODO: Add tests and install targets if needed.
 set_target_properties(test PROPERTIES
