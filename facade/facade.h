@@ -303,16 +303,6 @@ namespace facade
             }
         }
 
-        template <typename ...t_method_params, typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_template_method(
-            t_obj& obj,
-            t_ret(t_obj::* method)(t_expected_args...),
-            const std::string& method_name,
-            t_actual_args&& ... args)
-        {
-            return {};
-        }
-
     public:
         using t_impl_type = t_type;
 
