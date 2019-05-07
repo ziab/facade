@@ -1,5 +1,7 @@
 #include <chrono>
 
+#include <digestpp.hpp>
+
 namespace facade
 {
     class timer
@@ -29,4 +31,9 @@ namespace facade
             return duration.count();
         }
     };
+
+    std::string calculate_md5(const std::string& data)
+    {
+        return digestpp::md5().absorb(data).hexdigest();
+    }
 }

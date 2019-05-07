@@ -7,5 +7,6 @@ add_library(facade INTERFACE)
 
 target_include_directories(facade INTERFACE 
 	${CMAKE_CURRENT_SOURCE_DIR}
-	../cereal/include
+	${CMAKE_CURRENT_SOURCE_DIR}/../depends/cereal/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../depends/digestpp
 	)
