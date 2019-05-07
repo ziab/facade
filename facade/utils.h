@@ -33,10 +33,5 @@ namespace facade
                 return duration.count();
             }
         };
-
-        std::string calculate_hash(const std::string & data)
-        {
-            return digestpp::md5().absorb(data).hexdigest();
-        }
     }
 }

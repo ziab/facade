@@ -67,6 +67,7 @@ namespace facade
     using t_duration_resolution = std::chrono::microseconds;
     using t_cereal_output_archive = cereal::JSONOutputArchive;
     using t_cereal_input_archive = cereal::JSONInputArchive;
+    using t_hasher = digestpp::md5;
 
     struct method_call
     {
@@ -118,6 +119,11 @@ namespace facade
         t_cereal_input_archive archive{ ss };
         arg_unpacker unpacker(archive);
         visit_args(unpacker, std::forward<t_args>(args)...);
+    }
+
+    std::string calculate_hash(const std::string& data)
+    {
+        return t_hasher{}.absorb(data).hexdigest();
     }
 
     class facade_base
@@ -217,24 +223,21 @@ namespace facade
                 if constexpr (has_return) { return {}; }
                 else { return; }
             }
-
             std::string pre_call_args;
             record_args(pre_call_args, std::forward<t_actual_args>(args)...);
-            const auto hash = utils::calculate_hash(pre_call_args);
-
-            const auto method_call_it = method_it->second.find(hash);
-            if (method_call_it == method_it->second.end()) {
+            const auto hash = calculate_hash(pre_call_args);
+            const auto& this_method_calls = method_it->second;
+            const auto this_method_call_it = this_method_calls.find(hash);
+            if (this_method_call_it == method_it->second.end()) {
                 if constexpr (has_return) { return {}; }
                 else { return; }
             }
-
-            const auto& method_call = method_call_it->second;
-
-            std::this_thread::sleep_for(t_duration_resolution{ method_call->duration });
-            unpack(method_call->post_args, std::forward<t_actual_args>(args)...);
+            const auto& this_method_call = *this_method_call_it->second;
+            std::this_thread::sleep_for(t_duration_resolution{ this_method_call.duration });
+            unpack(this_method_call.post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
                 t_ret ret{};
-                unpack(method_call->ret, ret);
+                unpack(this_method_call.ret, ret);
                 return ret;
             }
 
@@ -263,7 +266,7 @@ namespace facade
             this_call->duration = timer.get_duration();
             record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
             {
-                const auto hash = utils::calculate_hash(this_call->pre_args);
+                const auto hash = calculate_hash(this_call->pre_args);
                 t_lock_guard lg(m_mtx);
                 m_calls[method_name][hash] = std::move(this_call);
             }
