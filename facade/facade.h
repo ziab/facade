@@ -125,7 +125,9 @@ namespace facade
     protected:
         std::unordered_map<
             std::string, 
-            std::vector<std::unique_ptr<method_call>>> m_calls;
+            std::unordered_map<
+                std::string,
+                std::unique_ptr<method_call>>> m_calls;
 
         std::mutex m_mtx;
         std::string m_name;
@@ -210,15 +212,24 @@ namespace facade
             t_actual_args&& ... args)
         {
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
-            const auto mit = m_calls.find(method_name);
-            if (mit == m_calls.end()) { 
+            const auto method_it = m_calls.find(method_name);
+            if (method_it == m_calls.end()) {
                 if constexpr (has_return) { return {}; }
                 else { return; }
             }
 
             std::string pre_call_args;
             record_args(pre_call_args, std::forward<t_actual_args>(args)...);
-            const auto& method_call = *mit->second.begin();
+            const auto hash = utils::calculate_hash(pre_call_args);
+
+            const auto method_call_it = method_it->second.find(hash);
+            if (method_call_it == method_it->second.end()) {
+                if constexpr (has_return) { return {}; }
+                else { return; }
+            }
+
+            const auto& method_call = method_call_it->second;
+
             std::this_thread::sleep_for(t_duration_resolution{ method_call->duration });
             unpack(method_call->post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
@@ -239,7 +250,7 @@ namespace facade
         {
             auto this_call = std::make_unique<method_call>();
             record_args(this_call->pre_args, std::forward<t_actual_args>(args)...);
-            timer timer;
+            utils::timer timer;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             std::any ret;
             if constexpr (has_return) {
@@ -252,8 +263,9 @@ namespace facade
             this_call->duration = timer.get_duration();
             record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
             {
+                const auto hash = utils::calculate_hash(this_call->pre_args);
                 t_lock_guard lg(m_mtx);
-                m_calls[method_name].emplace_back(std::move(this_call));
+                m_calls[method_name][hash] = std::move(this_call);
             }
             if constexpr (has_return) {
                 return std::any_cast<t_ret>(ret);
