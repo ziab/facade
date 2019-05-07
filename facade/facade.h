@@ -128,9 +128,9 @@ namespace facade
             std::unordered_map<
                 std::string,
                 std::unique_ptr<method_call>>> m_calls;
-
         std::mutex m_mtx;
         std::string m_name;
+
         const bool m_playing{ false };
         const bool m_recording{ false };
     public:
