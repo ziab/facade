@@ -50,6 +50,15 @@ namespace facade
             visit_args_impl(visitor, std::forward<t_args>(args)...);
         }
 
+        struct type_printer
+        {
+            template<typename t_arg>
+            void operator()(const t_arg& arg)
+            {
+                std::cout << typeid(t_arg).name() << std::endl;
+            }
+        };
+
         template<typename ...t_args>
         void print_arg_types(t_args&& ...args)
         {

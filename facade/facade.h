@@ -106,15 +106,6 @@ namespace facade
         }
     };
 
-    struct type_printer
-    {
-        template<typename t_arg>
-        void operator()(const t_arg& arg)
-        {
-            std::cout << typeid(t_arg).name() << std::endl;
-        }
-    };
-
     template<typename ...t_args>
     void unpack(const std::string& recorded, t_args&&... args)
     {
