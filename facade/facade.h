@@ -17,6 +17,8 @@
 #include <cereal/types/map.hpp>
 #include <cereal/types/vector.hpp>
 
+#include <algorithm/md5.hpp> // digestcpp
+
 #define FACADE_METHOD(_name) \
 template<typename ...t_args>\
 auto _name(t_args&& ... args)\
