@@ -6,4 +6,4 @@ cmake_minimum_required (VERSION 3.8)
 project ("facade")
 
 # Include sub-projects.
-add_subdirectory ("facade")
+add_subdirectory ("test")
