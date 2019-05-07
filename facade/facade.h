@@ -137,6 +137,8 @@ namespace facade
         const bool m_recording{ false };
     public:
 
+        using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
+
         void load(const std::filesystem::path& file)
         {
             std::ifstream ifs(file);
@@ -169,6 +171,7 @@ namespace facade
 
         void write_calls(const std::filesystem::path& path)
         {
+            t_lock_guard lg(m_mtx);
             std::ofstream ofs(path);
             t_cereal_output_archive archive{ ofs };
             archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls));
@@ -182,8 +185,6 @@ namespace facade
     protected:
         std::unique_ptr<t_type> m_ptr;
         t_type& m_impl;
-
-        using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
 
         template<typename ...t_args>
         void record_args(std::string& recorded, t_args&& ... args)
