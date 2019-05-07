@@ -30,6 +30,19 @@ auto _name(t_args&& ... args)\
         std::forward<t_args>(args)...);\
 }\
 
+#define FACADE_TEMPLATE_METHOD(_name) \
+template<typename ...t_method_params, typename ...t_args>\
+auto _name(t_args&& ... args)\
+{\
+    using t_ret = decltype(m_impl._name(std::forward<t_args>(args)...));\
+    t_ret(t_impl_type::* func_ptr)(t_method_params...) = &t_impl_type::_name;\
+    return call_method(\
+        m_impl,\
+        func_ptr,\
+        #_name,\
+        std::forward<t_args>(args)...);\
+}\
+
 #define FACADE_CONSTRUCTOR(_name) \
 _name(t_impl_type& impl, bool record) : facade(#_name, impl, record) {}\
 _name(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_name, std::move(ptr), record) {}\
@@ -80,25 +93,6 @@ namespace facade
         uint64_t duration;
     };
 
-    template <typename t_visitor>
-    inline void visit_args_impl(t_visitor&)
-    {
-        /* end of variadic recursion */
-    }
-
-    template <typename t_visitor, typename t, typename ...t_args>
-    void visit_args_impl(t_visitor& visitor, t&& head, t_args&& ... tail)
-    {
-        visitor(head);
-        visit_args_impl(visitor, tail...);
-    }
-
-    template <typename t_visitor, typename ...t_args>
-    void visit_args(t_visitor& visitor, t_args&& ... args)
-    {
-        visit_args_impl(visitor, std::forward<t_args>(args)...);
-    }
-
     template<typename t_archive>
     struct arg_unpacker
     {
@@ -112,6 +106,15 @@ namespace facade
         }
     };
 
+    struct type_printer
+    {
+        template<typename t_arg>
+        void operator()(const t_arg& arg)
+        {
+            std::cout << typeid(t_arg).name() << std::endl;
+        }
+    };
+
     template<typename ...t_args>
     void unpack(const std::string& recorded, t_args&&... args)
     {
@@ -120,7 +123,7 @@ namespace facade
         ss.str(recorded);
         t_cereal_input_archive archive{ ss };
         arg_unpacker unpacker(archive);
-        visit_args(unpacker, std::forward<t_args>(args)...);
+        utils::visit_args(unpacker, std::forward<t_args>(args)...);
     }
 
     std::string calculate_hash(const std::string& data)
@@ -156,7 +159,7 @@ namespace facade
             archive(cereal::make_nvp("name", name));
             if (name != m_name) {
                 std::runtime_error{
-                    std::string{ "name in the recotding is not matching: " } + name + " " + m_name };
+                    std::string{ "name in the recording is not matching: " } + name + " " + m_name };
             }
 
             archive(cereal::make_nvp("calls", m_calls));
@@ -197,7 +200,7 @@ namespace facade
             std::stringstream ss;
             {
                 t_cereal_output_archive archive{ ss };
-                visit_args(archive, std::forward<t_args>(args)...);
+                utils::visit_args(archive, std::forward<t_args>(args)...);
             }
             recorded = ss.str();
         }
@@ -208,7 +211,7 @@ namespace facade
             std::stringstream ss{ recorded };
             {
                 t_cereal_input_archive archive{ ss };
-                visit_args(archive, std::forward<t_args>(args)...);
+                utils::visit_args(archive, std::forward<t_args>(args)...);
             }
         }
 
@@ -267,8 +270,8 @@ namespace facade
             }
             this_call->duration = timer.get_duration();
             record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
+            const auto hash = calculate_hash(this_call->pre_args);
             {
-                const auto hash = calculate_hash(this_call->pre_args);
                 t_lock_guard lg(m_mtx);
                 m_calls[method_name][hash] = std::move(this_call);
             }
@@ -307,6 +310,16 @@ namespace facade
                 return call_method_pass_through(
                     obj, method, method_name, std::forward<t_actual_args>(args)...);
             }
+        }
+
+        template <typename ...t_method_params, typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
+        t_ret call_template_method(
+            t_obj& obj,
+            t_ret(t_obj::* method)(t_expected_args...),
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            return {};
         }
 
     public:

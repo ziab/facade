@@ -35,6 +35,14 @@ public:
         return 100500;
     }
 
+    template <typename T>
+    std::string template_function(T val)
+    {
+        std::stringstream ss;
+        ss << val;
+        return ss.str();
+    }
+
     void no_input_no_return_function()
     {
     }
@@ -47,6 +55,7 @@ public:
     FACADE_METHOD(do_stuff);
     FACADE_METHOD(no_input_function);
     FACADE_METHOD(no_input_no_return_function);
+    FACADE_TEMPLATE_METHOD(template_function);
 };
 
 void record()
@@ -58,7 +67,8 @@ void record()
     foo.do_stuff(true, 42, std::string{ "hello again!" });
     foo.no_input_function();
     foo.no_input_no_return_function();
-    
+    foo.template_function<int>(100);
+
     foo.write_calls("calls.json");
     utils::print_json("calls.json");
 }
@@ -66,14 +76,12 @@ void record()
 void play()
 {
     foo_facade foo{ "calls.json" };
-    auto ret = foo.do_stuff(false, 3, std::string{ "hello!" });
-    std::cout << "foo.do_stuff returned: " << std::to_string(ret) << std::endl;
-    ret = foo.do_stuff(true, 42, std::string{ "hello again!" });
-    std::cout << "foo.do_stuff returned: " << std::to_string(ret) << std::endl;
-    ret = foo.no_input_function();
-    std::cout << "foo.no_input_function() returned: " << std::to_string(ret) << std::endl;
 
+    std::cout << "foo.do_stuff returned: " << foo.do_stuff(false, 3, std::string{ "hello!" }) << std::endl;
+    std::cout << "foo.do_stuff returned: " << foo.do_stuff(true, 42, std::string{ "hello again!" }) << std::endl;
+    std::cout << "foo.no_input_function() returned: " << foo.no_input_function() << std::endl;
     foo.no_input_no_return_function();
+    std::cout << "foo.template_function returned: " << foo.template_function<int>(100) << std::endl;  
 }
 
 int main()
