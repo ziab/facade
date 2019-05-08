@@ -51,7 +51,7 @@ void use_network(network_interface& net)
     if (result) std::cout << "Received reply from the message server: " << reply << std::endl;
 }
 ```
-Now in order to create a facade you declare a class derived from facade::facade<T>:
+Now in order to create a facade you declare a class derived from `facade::facade<T>`:
 ```cpp
 class network_interface_facade : public facade::facade<network_interface>
 {
@@ -63,7 +63,9 @@ public:
     FACADE_METHOD(send);
 };
 ```
-And then you create a recording of `network_interface`'s behavior:
+`FACADE_CONSTRUCTOR` declares pre-defined constructors of the class, two for initializing it with a reference to the original implementation and another one for providing a path to a file with a recorded database.
+
+Then you create a recording of `network_interface`'s behavior:
 ```cpp
 void run()
 {
