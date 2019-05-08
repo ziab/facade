@@ -4,26 +4,29 @@ namespace facade
 {
     namespace utils
     {
-        template<class T>
-        struct is_pointer_to_const_member_function : std::false_type {};
+        namespace traits
+        {
+            template<class t_type>
+            struct is_pointer_to_const_member_function : std::false_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args...) const> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args...) const> : std::true_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args...) const &> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args...) const &> : std::true_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args...) const &&> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args...) const &&> : std::true_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args..., ...) const> : std::true_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const &> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args..., ...) const &> : std::true_type {};
 
-        template<class R, class T, class... Args>
-        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const &&> : std::true_type {};
+            template<class t_ret, class t_type, class... t_args>
+            struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args..., ...) const &&> : std::true_type {};
+        }
 
         class timer
         {

@@ -28,50 +28,66 @@ namespace example
         bool initialize()
         {
             m_ip = "192.168.1.31";
-            m_dns_cache = { { "mail_server", "192.168.1.3" }, { "message_server", "192.168.1.3"} };
+            m_dns_cache = { { "mail_server", "192.168.1.3" }, { "message_server", "192.168.1.12"} };
             return true;
         }
-
         const std::string& get_local_ip() const { return m_ip; }
-        
         std::string resolve(const std::string& name)
         {
             if (m_dns_cache.find(name) != m_dns_cache.end()) return m_dns_cache[name];
             return "unresolved";
         }
+
+        bool send(const std::string& address, const std::string& message, std::string& reply)
+        {
+            if (address == "192.168.1.3" || address == "192.168.1.12") {
+                reply = "Your message: '" + message + "' is delivered";
+                return true;
+            }
+            return false;
+        }
     };
 
-    class network_interface_facade : facade::facade<network_interface>
+    class network_interface_facade : public facade::facade<network_interface>
     {
     public:
         FACADE_CONSTRUCTOR(network_interface_facade);
         FACADE_METHOD(initialize);
-        //FACADE_METHOD_CONST(get_local_ip);
-        //FACADE_METHOD(resolve);
-
-        template<typename ...t_args>
-        auto resolve(t_args&& ... args)
-        {
-            using t_ret = decltype(m_impl.resolve(std::forward<t_args>(args)...));
-            using t_method = t_ret(t_args...);
-
-            std::function lambda{ [&](t_args...) -> t_ret {
-                return m_impl.resolve(args...);
-            } };
-
-            return call_method<t_impl_type, t_ret>(
-                m_impl, 
-                lambda, 
-                "resolve", 
-                std::forward<t_args>(args)...);
-        }
+        FACADE_METHOD(get_local_ip);
+        FACADE_METHOD(resolve);
+        FACADE_METHOD(send);
     };
 
     void use_network(network_interface_facade& net)
     {
-        //net.initialize();
-        //const auto local_ip = net.get_local_ip();
-        net.resolve(std::string{ "mail_server" });
+        std::cout << "Initializing network, result: " << net.initialize() << std::endl;
+        std::cout << "Local IP: " << net.get_local_ip() << std::endl;
+        const auto mail_server_ip = net.resolve(std::string{ "mail_server" });
+        const auto message_server_ip = net.resolve(std::string{ "message_server" });
+        const auto storage_server_ip = net.resolve(std::string{ "storage_server" });
+        std::cout << "mail_server_ip = " << mail_server_ip << ", message_server_ip = " << message_server_ip
+            << ", storage_server_ip = " << storage_server_ip << std::endl;
+        std::string reply;
+        auto result = net.send(mail_server_ip, std::string{ "Hello mail server!" }, reply);
+        if (result) std::cout << "Received reply from the mail server: " << reply << std::endl;
+        reply.clear();
+        result = net.send(mail_server_ip, std::string{ "Hello message server!" }, reply);
+        if (result) std::cout << "Received reply from the message server: " << reply << std::endl;
+    }
+
+    void run()
+    {
+        {
+            auto net_impl = std::make_unique<network_interface>();
+            network_interface_facade net{ std::move(net_impl), true };
+            use_network(net);
+            net.write_calls("network_interface.json");
+        }
+        {
+            utils::print_json("network_interface.json");
+            network_interface_facade net{ "network_interface.json" };
+            use_network(net);
+        }
     }
 }
 
@@ -112,7 +128,7 @@ namespace example2
         FACADE_METHOD(no_input_function);
         FACADE_METHOD(another_no_input_function);
         FACADE_METHOD(input_output_function);
-        //FACADE_TEMPLATE_METHOD(template_function);
+        FACADE_METHOD(template_function);
     };
 
     void record()
@@ -124,7 +140,7 @@ namespace example2
         foo.no_input_function();
         foo.input_output_function(false, 3, std::string{});
         foo.input_output_function(true, 42, std::string{});
-        //foo.template_function<int, float>(100, 500.f);
+        foo.template_function<int, float>(100, 500.f);
 
         foo.write_calls("calls.json");
         utils::print_json("calls.json");
@@ -140,7 +156,7 @@ namespace example2
         std::cout << "foo.no_input_function returned: " << foo.input_output_function(false, 3, output) << " output: " << output << std::endl;
         output.clear();
         std::cout << "foo.no_input_function returned: " << foo.input_output_function(true, 42, output) << " output: " << output << std::endl;
-        //std::cout << "foo.template_function returned: " << foo.template_function<int, float>(100, 500.f) << std::endl;
+        std::cout << "foo.template_function returned: " << foo.template_function<int, float>(100, 500.f) << std::endl;
     }
 
     void run()
@@ -152,6 +168,7 @@ namespace example2
 
 int main()
 {
+    example::run();
     example2::run();
 	return 0;
 }

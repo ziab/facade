@@ -25,40 +25,13 @@ auto _NAME(t_args&& ... args)\
 {\
     using t_ret = decltype(m_impl._NAME(std::forward<t_args>(args)...));\
     using t_method = t_ret(t_args...);\
-    std::function lambda{ [&](t_args...) -> t_ret {\
-        return m_impl._NAME(args...);\
+    std::function lambda{ [this](t_args&&... args) -> t_ret {\
+        return m_impl._NAME(std::forward<t_args>(args)...);\
     } };\
     return call_method<t_impl_type, t_ret>(\
         m_impl,\
         lambda,\
         #_NAME,\
-        std::forward<t_args>(args)...);\
-}\
-
-#define FACADE_METHOD_CONST(_name) \
-template<typename ...t_args>\
-auto _name(t_args&& ... args)\
-{\
-    const auto& const_ref = static_cast<const t_impl_type&>(m_impl);\
-    using t_ret = decltype(const_ref._name(std::forward<t_args>(args)...));\
-    t_ret(t_impl_type::*func_ptr)(t_args...) const;\
-    return call_method(\
-        m_impl,\
-        func_ptr,\
-        #_name,\
-        std::forward<t_args>(args)...);\
-}\
-
-#define FACADE_TEMPLATE_METHOD(_name) \
-template<typename ...t_method_params, typename ...t_args>\
-auto _name(t_args&& ... args)\
-{\
-    using t_ret = decltype(m_impl._name(std::forward<t_args>(args)...));\
-    t_ret(t_impl_type::* func_ptr)(t_method_params...) = &t_impl_type::_name;\
-    return call_method(\
-        m_impl,\
-        func_ptr,\
-        #_name,\
         std::forward<t_args>(args)...);\
 }\
 
@@ -121,7 +94,14 @@ namespace facade
         template<typename t_arg>
         void operator()(t_arg& arg)
         {
-            archive(arg);
+            if constexpr (std::is_const<t_arg>::value) {
+                // if argument has costant qualifier we extract it to a dummy
+                // variable to move further through the stream
+                typename std::decay<t_arg>::type dummy;
+                archive(dummy);
+            } else {
+                archive(arg);
+            }
         }
     };
 
@@ -261,7 +241,7 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, typename t_method, typename ...t_actual_args>
-        t_ret call_method_and_record(
+        typename std::decay<t_ret>::type call_method_and_record(
             const t_obj& obj,
             t_method&& method,
             const std::string& method_name,
@@ -291,7 +271,7 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method_pass_through(
+        typename std::decay<t_ret>::type call_method_pass_through(
             const t_obj& obj,
             t_method&& method,
             const std::string& method_name,
