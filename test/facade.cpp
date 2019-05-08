@@ -28,18 +28,67 @@ namespace example
         bool initialize()
         {
             m_ip = "192.168.1.31";
-            m_dns_cache = { { "mail_server", "192.168.1.3" }, { "message_server", "192.168.1.3"} };
+            m_dns_cache = { { "mail_server", "192.168.1.3" }, { "message_server", "192.168.1.12"} };
             return true;
         }
-
-        std::string get_local_ip() const { return m_ip; }
-        
+        const std::string& get_local_ip() const { return m_ip; }
         std::string resolve(const std::string& name)
         {
             if (m_dns_cache.find(name) != m_dns_cache.end()) return m_dns_cache[name];
             return "unresolved";
         }
+
+        bool send(const std::string& address, const std::string& message, std::string& reply)
+        {
+            if (address == "192.168.1.3" || address == "192.168.1.12") {
+                reply = "Your message: '" + message + "' is delivered";
+                return true;
+            }
+            return false;
+        }
     };
+
+    class network_interface_facade : public facade::facade<network_interface>
+    {
+    public:
+        FACADE_CONSTRUCTOR(network_interface_facade);
+        FACADE_METHOD(initialize);
+        FACADE_METHOD(get_local_ip);
+        FACADE_METHOD(resolve);
+        FACADE_METHOD(send);
+    };
+
+    void use_network(network_interface_facade& net)
+    {
+        std::cout << "Initializing network, result: " << net.initialize() << std::endl;
+        std::cout << "Local IP: " << net.get_local_ip() << std::endl;
+        const auto mail_server_ip = net.resolve(std::string{ "mail_server" });
+        const auto message_server_ip = net.resolve(std::string{ "message_server" });
+        const auto storage_server_ip = net.resolve(std::string{ "storage_server" });
+        std::cout << "mail_server_ip = " << mail_server_ip << ", message_server_ip = " << message_server_ip
+            << ", storage_server_ip = " << storage_server_ip << std::endl;
+        std::string reply;
+        auto result = net.send(mail_server_ip, std::string{ "Hello mail server!" }, reply);
+        if (result) std::cout << "Received reply from the mail server: " << reply << std::endl;
+        reply.clear();
+        result = net.send(mail_server_ip, std::string{ "Hello message server!" }, reply);
+        if (result) std::cout << "Received reply from the message server: " << reply << std::endl;
+    }
+
+    void run()
+    {
+        {
+            auto net_impl = std::make_unique<network_interface>();
+            network_interface_facade net{ std::move(net_impl), true };
+            use_network(net);
+            net.write_calls("network_interface.json");
+        }
+        {
+            utils::print_json("network_interface.json");
+            network_interface_facade net{ "network_interface.json" };
+            use_network(net);
+        }
+    }
 }
 
 namespace example2
@@ -53,6 +102,7 @@ namespace example2
 
         void no_input_no_return_function() {}
         int no_input_function() { return 100500; }
+        std::string another_no_input_function() const { return "100500"; }
         bool input_output_function(bool param1, int param2, std::string& output)
         {
             if (param1 == expected_param1 && expected_param2 == 42) {
@@ -76,8 +126,9 @@ namespace example2
         FACADE_CONSTRUCTOR(foo_facade);
         FACADE_METHOD(no_input_no_return_function);
         FACADE_METHOD(no_input_function);
+        FACADE_METHOD(another_no_input_function);
         FACADE_METHOD(input_output_function);
-        FACADE_TEMPLATE_METHOD(template_function);
+        FACADE_METHOD(template_function);
     };
 
     void record()
@@ -117,6 +168,7 @@ namespace example2
 
 int main()
 {
+    example::run();
     example2::run();
 	return 0;
 }
