@@ -209,7 +209,7 @@ namespace facade
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_play(
-            t_obj&,
+            const t_obj&,
             t_ret(t_obj::*)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -243,7 +243,7 @@ namespace facade
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_and_record(
-            t_obj& obj,
+            const t_obj& obj,
             t_ret(t_obj::*method)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -253,12 +253,25 @@ namespace facade
             utils::timer timer;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             std::any ret;
-            if constexpr (has_return) {
-                ret = (obj.*method)(std::forward<t_actual_args>(args)...);
-                record_args(this_call->ret, std::any_cast<t_ret>(ret));
+            if constexpr (utils::is_pointer_to_const_member_function<decltype(method)>{}) {
+                if constexpr (has_return) {
+                    ret = (obj.*method)(std::forward<t_actual_args>(args)...);
+                    record_args(this_call->ret, std::any_cast<t_ret>(ret));
+                }
+                else {
+                    (obj.*method)(std::forward<t_actual_args>(args)...);
+                }
             }
-            else {
-                (obj.*method)(std::forward<t_actual_args>(args)...);
+            else
+            {
+                auto& non_const_obj = const_cast<t_obj&>(obj);
+                if constexpr (has_return) {
+                    ret = (non_const_obj.*method)(std::forward<t_actual_args>(args)...);
+                    record_args(this_call->ret, std::any_cast<t_ret>(ret));
+                }
+                else {
+                    (non_const_obj.*method)(std::forward<t_actual_args>(args)...);
+                }
             }
             this_call->duration = timer.get_duration();
             record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
@@ -274,17 +287,22 @@ namespace facade
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method_pass_through(
-            t_obj& obj,
+            const t_obj& obj,
             t_ret(t_obj::* method)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)
         {
-            return (obj.*method)(std::forward<t_actual_args>(args)...);
+            if constexpr (utils::is_pointer_to_const_member_function<decltype(method)>{}) {
+                return (obj.*method)(std::forward<t_actual_args>(args)...);
+            } else {
+                auto& non_const_obj = const_cast<t_obj&>(obj);
+                return (non_const_obj.*method)(std::forward<t_actual_args>(args)...);
+            }
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
         t_ret call_method(
-            t_obj& obj,
+            const t_obj& obj,
             t_ret(t_obj::* method)(t_expected_args...),
             const std::string& method_name,
             t_actual_args&& ... args)

@@ -4,6 +4,27 @@ namespace facade
 {
     namespace utils
     {
+        template<class T>
+        struct is_pointer_to_const_member_function : std::false_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args...) const> : std::true_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args...) const &> : std::true_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args...) const &&> : std::true_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const> : std::true_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const &> : std::true_type {};
+
+        template<class R, class T, class... Args>
+        struct is_pointer_to_const_member_function<R(T::*)(Args..., ...) const &&> : std::true_type {};
+
         class timer
         {
             std::chrono::time_point<std::chrono::system_clock> m_time_started;
