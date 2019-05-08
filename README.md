@@ -77,7 +77,6 @@ void run()
         net.write_calls("network_interface.json");
     }
     {   // replay network_interface
-        utils::print_json("network_interface.json");
         network_interface_facade net{ "network_interface.json" };
         use_network(net);
     }
