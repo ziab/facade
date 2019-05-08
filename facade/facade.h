@@ -30,6 +30,20 @@ auto _name(t_args&& ... args)\
         std::forward<t_args>(args)...);\
 }\
 
+#define FACADE_METHOD_CONST(_name) \
+template<typename ...t_args>\
+auto _name(t_args&& ... args)\
+{\
+    const auto& const_ref = static_cast<const t_impl_type&>(m_impl);\
+    using t_ret = decltype(const_ref._name(std::forward<t_args>(args)...));\
+    t_ret(t_impl_type::*func_ptr)(t_args...) const;\
+    return call_method(\
+        m_impl,\
+        func_ptr,\
+        #_name,\
+        std::forward<t_args>(args)...);\
+}\
+
 #define FACADE_TEMPLATE_METHOD(_name) \
 template<typename ...t_method_params, typename ...t_args>\
 auto _name(t_args&& ... args)\
@@ -208,7 +222,7 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method_play(
+        typename std::decay<t_ret>::type call_method_play(
             const t_obj&,
             t_ret(t_obj::*)(t_expected_args...),
             const std::string& method_name,
@@ -233,7 +247,7 @@ namespace facade
             std::this_thread::sleep_for(t_duration_resolution{ this_method_call.duration });
             unpack(this_method_call.post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
-                t_ret ret{};
+                typename std::decay<t_ret>::type ret{};
                 unpack(this_method_call.ret, ret);
                 return ret;
             }
@@ -257,8 +271,7 @@ namespace facade
                 if constexpr (has_return) {
                     ret = (obj.*method)(std::forward<t_actual_args>(args)...);
                     record_args(this_call->ret, std::any_cast<t_ret>(ret));
-                }
-                else {
+                } else {
                     (obj.*method)(std::forward<t_actual_args>(args)...);
                 }
             }
@@ -268,8 +281,7 @@ namespace facade
                 if constexpr (has_return) {
                     ret = (non_const_obj.*method)(std::forward<t_actual_args>(args)...);
                     record_args(this_call->ret, std::any_cast<t_ret>(ret));
-                }
-                else {
+                } else {
                     (non_const_obj.*method)(std::forward<t_actual_args>(args)...);
                 }
             }
@@ -301,7 +313,7 @@ namespace facade
         }
 
         template <typename t_obj, typename t_ret, class ...t_expected_args, typename ...t_actual_args>
-        t_ret call_method(
+        typename std::decay<t_ret>::type call_method(
             const t_obj& obj,
             t_ret(t_obj::* method)(t_expected_args...),
             const std::string& method_name,
@@ -324,6 +336,7 @@ namespace facade
 
     public:
         using t_impl_type = t_type;
+        using t_const_impl_type = typename std::add_const<t_type>::type;
 
         facade(std::string name, t_type& impl, bool record) : 
             facade_base(std::move(name), record),
