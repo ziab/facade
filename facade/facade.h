@@ -208,7 +208,7 @@ namespace facade
     protected:
         std::unique_ptr<t_type> m_ptr;
         t_type& m_impl;
-        result_selection m_selection{ result_selection::once };
+        result_selection m_selection{ result_selection::cycle };
 
         template<typename ...t_args>
         void record_args(std::string& recorded, t_args&& ... args)
