@@ -50,20 +50,11 @@ namespace facade
 namespace cereal
 {
     template<class t_archive>
-    void save(t_archive& archive, const std::unique_ptr<facade::method_call>& call)
+    void serialize(t_archive& archive, facade::method_call& call)
     {
         archive(
-            cereal::make_nvp("pre_args", call->pre_args),
-            cereal::make_nvp("results", call->results));
-    }
-
-    template<class t_archive>
-    void load(t_archive& archive, std::unique_ptr<facade::method_call>& call)
-    {
-        call = std::make_unique<facade::method_call>();
-        archive(
-            cereal::make_nvp("pre_args", call->pre_args),
-            cereal::make_nvp("results", call->results));
+            cereal::make_nvp("pre_args", call.pre_args),
+            cereal::make_nvp("results", call.results));
     }
 
     template<class t_archive>
@@ -102,9 +93,9 @@ namespace facade
     {
         std::string pre_args;
         std::vector<method_result> results;
-        size_t current_result{ 0 };
+        mutable size_t current_result{ 0 };
 
-        auto& get_next_result(const result_selection selection)
+        const auto& get_next_result(const result_selection selection) const
         {
             if (results.empty()) throw std::logic_error{ "results can't be empty" };
             if (current_result > results.size()) {
@@ -163,7 +154,7 @@ namespace facade
             std::string, 
             std::unordered_map<
                 std::string,
-                std::unique_ptr<method_call>>> m_calls;
+                method_call>> m_calls;
         std::mutex m_mtx;
         std::string m_name;
 
@@ -263,12 +254,12 @@ namespace facade
                 if constexpr (has_return) { return {}; }
                 else { return; }
             }
-            const auto& this_method_call = this_method_call_it->second->get_next_result(m_selection);
-            std::this_thread::sleep_for(t_duration_resolution{ this_method_call.duration });
-            unpack(this_method_call.post_args, std::forward<t_actual_args>(args)...);
+            const auto& this_method_call_result = this_method_call_it->second.get_next_result(m_selection);
+            std::this_thread::sleep_for(t_duration_resolution{ this_method_call_result.duration });
+            unpack(this_method_call_result.post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
                 typename std::decay<t_ret>::type ret{};
-                unpack(this_method_call.ret, ret);
+                unpack(this_method_call_result.ret, ret);
                 return ret;
             }
             if constexpr (has_return) return {};
@@ -285,12 +276,12 @@ namespace facade
             auto method_call_it = method_calls.find(hash);
             if (method_call_it == method_calls.end())
             {
-                auto new_call = std::make_unique<method_call>();
-                method_call_it = method_calls.insert({ hash, std::move(new_call) }).first;
-                method_call_it->second->pre_args = std::move(pre_args);
+                method_call method_call;
+                method_call.pre_args = std::move(pre_args);
+                method_call_it = method_calls.insert({ hash, std::move(method_call) }).first;
             }
 
-            method_call_it->second->results.emplace_back(std::move(result));
+            method_call_it->second.results.emplace_back(std::move(result));
         }
 
         template <typename t_obj, typename t_ret, typename t_method, typename ...t_actual_args>
