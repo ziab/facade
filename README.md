@@ -51,7 +51,7 @@ void use_network(network_interface& net)
     if (result) std::cout << "Received reply from the message server: " << reply << std::endl;
 }
 ```
-Quite often you run into a situation where you would like to test a clinet of such class but using the full-blown implementation of it might not be feasible in the test environment. In case of a real network interface, the servers that the client communicates with might not be available int the test environment. Here comes `facade` to help.
+Quite often you run into a situation where you would like to test a client of such class but using the full-blown implementation of it might not be feasible in the test environment. In case of a real network interface, the servers that the client communicates with might not be available in the test environment. Here comes `facade` to help.
 Now in order to create a facade you declare a class derived from `facade::facade<T>`:
 ```cpp
 class network_interface_facade : public facade::facade<network_interface>
