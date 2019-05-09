@@ -1,4 +1,4 @@
-# facade - a C++17 library for mocking C++ class implementation
+# facade - a C++17 library _under development_ for mocking C++ class implementation
 
 `facade` is a header-only C++17 library **_under development_** for mocking implementation of C++ classes.
 Mocking is perfomed by creating a facade (a wrapper) for the original implementation, recording all typical calls made to it and storing that information as a database file. Without instantiating the original implementation, the database file can later be loaded and "replayed".
