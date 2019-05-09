@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <type_traits>
 #include <any>
+#include <atomic>
 
 #include "utils.h"
 
@@ -43,6 +44,7 @@ _name(const std::filesystem::path& file) : facade(#_name, file) {}\
 namespace facade
 {
     struct method_call;
+    struct method_result;
 }
 
 namespace cereal
@@ -52,9 +54,7 @@ namespace cereal
     {
         archive(
             cereal::make_nvp("pre_args", call->pre_args),
-            cereal::make_nvp("post_args", call->post_args),
-            cereal::make_nvp("ret", call->ret),
-            cereal::make_nvp("duration", call->duration));
+            cereal::make_nvp("results", call->results));
     }
 
     template<class t_archive>
@@ -63,9 +63,17 @@ namespace cereal
         call = std::make_unique<facade::method_call>();
         archive(
             cereal::make_nvp("pre_args", call->pre_args),
-            cereal::make_nvp("post_args", call->post_args),
-            cereal::make_nvp("ret", call->ret),
-            cereal::make_nvp("duration", call->duration));
+            cereal::make_nvp("results", call->results));
+    }
+
+    template<class t_archive>
+    void serialize(t_archive& archive, facade::method_result& result)
+    {
+        archive(
+            cereal::make_nvp("post_args", result.post_args),
+            cereal::make_nvp("ret", result.ret),
+            cereal::make_nvp("offest_since_epoch", result.offest_since_epoch),
+            cereal::make_nvp("duration", result.duration));
     }
 }
 
@@ -76,13 +84,39 @@ namespace facade
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
 
-    struct method_call
+    enum class result_selection
     {
-        std::string pre_args;
+        once = 1,
+        cycle
+    };
+
+    struct method_result
+    {
         std::string post_args;
         std::string ret;
         uint64_t offest_since_epoch;
         uint64_t duration;
+    };
+
+    struct method_call
+    {
+        std::string pre_args;
+        std::vector<method_result> results;
+        size_t current_result{ 0 };
+
+        auto& get_next_result(const result_selection selection)
+        {
+            if (results.empty()) throw std::logic_error{ "results can't be empty" };
+            if (current_result > results.size()) {
+                if (selection == result_selection::once) {
+                    throw std::logic_error{ "method results are exceeded for" /*put name here*/ };
+                }
+                else if (selection == result_selection::cycle) {
+                    current_result = 0;
+                }
+            }
+            return results[current_result++];
+        }
     };
 
     template<typename t_archive>
@@ -95,8 +129,9 @@ namespace facade
         void operator()(t_arg& arg)
         {
             if constexpr (std::is_const<t_arg>::value) {
-                // if argument has costant qualifier we extract it to a dummy
-                // variable to move further through the stream
+                // If argument has costant qualifier we extract it to a dummy
+                // variable to move further through the stream.
+                // Can be optimized by skippin the field in the stream
                 typename std::decay<t_arg>::type dummy;
                 archive(dummy);
             } else {
@@ -180,10 +215,10 @@ namespace facade
     template<typename t_type>
     class facade : public facade_base
     {
-
     protected:
         std::unique_ptr<t_type> m_ptr;
         t_type& m_impl;
+        result_selection m_selection{ result_selection::once };
 
         template<typename ...t_args>
         void record_args(std::string& recorded, t_args&& ... args)
@@ -228,7 +263,7 @@ namespace facade
                 if constexpr (has_return) { return {}; }
                 else { return; }
             }
-            const auto& this_method_call = *this_method_call_it->second;
+            const auto& this_method_call = this_method_call_it->second->get_next_result(m_selection);
             std::this_thread::sleep_for(t_duration_resolution{ this_method_call.duration });
             unpack(this_method_call.post_args, std::forward<t_actual_args>(args)...);
             if constexpr (has_return) {
@@ -236,8 +271,26 @@ namespace facade
                 unpack(this_method_call.ret, ret);
                 return ret;
             }
-
             if constexpr (has_return) return {};
+        }
+
+        void insert_method_call(
+            const std::string& method_name, 
+            std::string& pre_args, 
+            method_result&& result)
+        {
+            const auto hash = calculate_hash(pre_args);
+            t_lock_guard lg(m_mtx);
+            auto& method_calls = m_calls[method_name];
+            auto method_call_it = method_calls.find(hash);
+            if (method_call_it == method_calls.end())
+            {
+                auto new_call = std::make_unique<method_call>();
+                method_call_it = method_calls.insert({ hash, std::move(new_call) }).first;
+                method_call_it->second->pre_args = std::move(pre_args);
+            }
+
+            method_call_it->second->results.emplace_back(std::move(result));
         }
 
         template <typename t_obj, typename t_ret, typename t_method, typename ...t_actual_args>
@@ -247,24 +300,21 @@ namespace facade
             const std::string& method_name,
             t_actual_args&& ... args)
         {
-            auto this_call = std::make_unique<method_call>();
-            record_args(this_call->pre_args, std::forward<t_actual_args>(args)...);
+            std::string pre_args;
+            record_args(pre_args, std::forward<t_actual_args>(args)...);
+            method_result this_call_result;
             utils::timer timer;
-            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             std::any ret;
+            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
                 ret = method(std::forward<t_actual_args>(args)...);
-                record_args(this_call->ret, std::any_cast<t_ret>(ret));
+                record_args(this_call_result.ret, std::any_cast<t_ret>(ret));
             } else {
                 method(std::forward<t_actual_args>(args)...);
             }
-            this_call->duration = timer.get_duration();
-            record_args(this_call->post_args, std::forward<t_actual_args>(args)...);
-            const auto hash = calculate_hash(this_call->pre_args);
-            {
-                t_lock_guard lg(m_mtx);
-                m_calls[method_name][hash] = std::move(this_call);
-            }
+            this_call_result.duration = timer.get_duration();
+            record_args(this_call_result.post_args, std::forward<t_actual_args>(args)...);
+            insert_method_call(method_name, pre_args, std::move(this_call_result));
             if constexpr (has_return) {
                 return std::any_cast<t_ret>(ret);
             }
