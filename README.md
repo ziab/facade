@@ -34,7 +34,7 @@ public:
 ```
 And the class may be used like this:
 ```cpp
-void use_network(network_interface& net)
+void use_network(network_interface_facade& net)
 {
     std::cout << "Initializing network, result: " << net.initialize() << std::endl;
     std::cout << "Local IP: " << net.get_local_ip() << std::endl;
