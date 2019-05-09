@@ -29,8 +29,7 @@ auto _NAME(t_args&& ... args)\
     std::function lambda{ [this](t_args&&... args) -> t_ret {\
         return m_impl._NAME(std::forward<t_args>(args)...);\
     } };\
-    return call_method<t_impl_type, t_ret>(\
-        m_impl,\
+    return call_method<t_ret>(\
         lambda,\
         #_NAME,\
         std::forward<t_args>(args)...);\
@@ -232,9 +231,8 @@ namespace facade
             }
         }
 
-        template <typename t_obj, typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
+        template <typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
         typename std::decay<t_ret>::type call_method_play(
-            const t_obj&,
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -284,9 +282,8 @@ namespace facade
             method_call_it->second.results.emplace_back(std::move(result));
         }
 
-        template <typename t_obj, typename t_ret, typename t_method, typename ...t_actual_args>
+        template <typename t_ret, typename t_method, typename ...t_actual_args>
         typename std::decay<t_ret>::type call_method_and_record(
-            const t_obj& obj,
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -311,9 +308,8 @@ namespace facade
             }
         }
 
-        template <typename t_obj, typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
+        template <typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
         typename std::decay<t_ret>::type call_method_pass_through(
-            const t_obj& obj,
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -321,25 +317,24 @@ namespace facade
             return method(std::forward<t_actual_args>(args)...);
         }
 
-        template <typename t_obj, typename t_ret, typename t_method, typename ...t_actual_args>
+        template <typename t_ret, typename t_method, typename ...t_actual_args>
         typename std::decay<t_ret>::type call_method(
-            const t_obj& obj,
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
         {
             if (m_playing)
             {
-                return call_method_play<t_impl_type, t_ret>(
-                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+                return call_method_play<t_ret>(
+                    method, method_name, std::forward<t_actual_args>(args)...);
             }
             if (m_recording) {
-                return call_method_and_record<t_impl_type, t_ret>(
-                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+                return call_method_and_record<t_ret>(
+                    method, method_name, std::forward<t_actual_args>(args)...);
             }
             else {
-                return call_method_pass_through<t_impl_type, t_ret>(
-                    obj, method, method_name, std::forward<t_actual_args>(args)...);
+                return call_method_pass_through<t_ret>(
+                    method, method_name, std::forward<t_actual_args>(args)...);
             }
         }
 
