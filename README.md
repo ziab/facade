@@ -125,3 +125,6 @@ The database is stored as a JSON file:
         },
         ...
 ```
+Credits:
+* [cereal](https://github.com/USCiLab/cereal)
+* [digestpp](https://github.com/kerukuro/digestpp)
