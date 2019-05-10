@@ -4,3 +4,6 @@
 [submodule "depends/digestpp"]
 	path = depends/digestpp
 	url = https://github.com/kerukuro/digestpp.git
+[submodule "depends/googletest"]
+	path = depends/googletest
+	url = https://github.com/google/googletest.git

@@ -1,7 +1,8 @@
 ﻿#include "facade.h"
 
 #include <iostream>
-#include <string>
+
+#include <gtest/gtest.h>
 
 namespace utils
 {
@@ -91,7 +92,7 @@ namespace example
     }
 }
 
-namespace example2
+namespace test_classes
 {
     class foo
     {
@@ -102,7 +103,7 @@ namespace example2
 
         void no_input_no_return_function() {}
         int no_input_function() { return 100500; }
-        std::string another_no_input_function() const { return "100500"; }
+        std::string const_no_input_function() const { return "100500"; }
         bool input_output_function(bool param1, int param2, std::string& output)
         {
             if (param1 == expected_param1 && expected_param2 == 42) {
@@ -126,49 +127,54 @@ namespace example2
         FACADE_CONSTRUCTOR(foo_facade);
         FACADE_METHOD(no_input_no_return_function);
         FACADE_METHOD(no_input_function);
-        FACADE_METHOD(another_no_input_function);
+        FACADE_METHOD(const_no_input_function);
         FACADE_METHOD(input_output_function);
         FACADE_METHOD(template_function);
     };
+}
 
-    void record()
+#define do_compare_results(A, B, method, ...)\
+    ASSERT_EQ(A.method(__VA_ARGS__), B.method(__VA_ARGS__)) << #method" result mismatched";\
+
+void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& original)
+{
+    do_compare_results(facade, original, no_input_function);
+    do_compare_results(facade, original, const_no_input_function);
+
+    std::string a_string, b_string;
+    ASSERT_EQ(facade.input_output_function(false, 3, a_string), original.input_output_function(false, 3, b_string));
+    ASSERT_EQ(a_string, b_string);
+    a_string.clear();
+    b_string.clear();
+    ASSERT_EQ(facade.input_output_function(true, 42, a_string), original.input_output_function(true, 42, b_string));
+    ASSERT_EQ(a_string, b_string);
+    a_string.clear();
+    b_string.clear();
+
+    do_compare_results(facade, original, template_function, 100, 500.f);
+}
+
+TEST(basic, compare_results)
+{
     {
-        auto impl = std::make_unique<foo>();
-        foo_facade foo{ std::move(impl), true };
-
-        foo.no_input_no_return_function();
-        foo.no_input_function();
-        foo.input_output_function(false, 3, std::string{});
-        foo.input_output_function(true, 42, std::string{});
-        foo.template_function<int, float>(100, 500.f);
-
-        foo.write_calls("calls.json");
-        utils::print_json("calls.json");
+        auto impl = std::make_unique<test_classes::foo>();
+        test_classes::foo_facade facade{ std::move(impl), true };
+        test_classes::foo original;
+        compare_foo_result(facade, original);
+        facade.write_calls("calls.json");
+        //utils::print_json("calls.json");
     }
-
-    void play()
     {
-        foo_facade foo{ "calls.json" };
-
-        foo.no_input_no_return_function();
-        std::cout << "foo.no_input_function() returned: " << foo.no_input_function() << std::endl;
-        std::string output;
-        std::cout << "foo.no_input_function returned: " << foo.input_output_function(false, 3, output) << " output: " << output << std::endl;
-        output.clear();
-        std::cout << "foo.no_input_function returned: " << foo.input_output_function(true, 42, output) << " output: " << output << std::endl;
-        std::cout << "foo.template_function returned: " << foo.template_function<int, float>(100, 500.f) << std::endl;
-    }
-
-    void run()
-    {
-        record();
-        play();
+        test_classes::foo_facade facade{ "calls.json" };
+        test_classes::foo original;
+        compare_foo_result(facade, original);
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     example::run();
-    example2::run();
-	return 0;
+    
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

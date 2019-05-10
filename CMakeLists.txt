@@ -7,4 +7,5 @@ project ("facade")
 
 # Include sub-projects.
 add_subdirectory ("facade")
+add_subdirectory ("depends/googletest/googletest")
 add_subdirectory ("test")

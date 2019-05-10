@@ -3,11 +3,27 @@
 #
 cmake_minimum_required (VERSION 3.8)
 
+if (MSVC)
+    foreach (flag_var
+             CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+             CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+             CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+             CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if (NOT BUILD_SHARED_LIBS AND NOT gtest_force_shared_crt)
+        string(REPLACE "/MD" "-MT" ${flag_var} "${${flag_var}}")
+      endif()
+
+      # string(REPLACE "/W3" "/W4" ${flag_var} "${${flag_var}}")
+    endforeach()
+  endif()
+
 file(GLOB_RECURSE cppfiles "*.cpp")
 # Add source to this project's executable.
 add_executable (test ${cppfiles})
 
 target_link_libraries(test PRIVATE facade)
+
+target_link_libraries(test PRIVATE gtest)
 
 # TODO: Add tests and install targets if needed.
 set_target_properties(test PROPERTIES
