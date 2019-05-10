@@ -97,7 +97,7 @@ namespace facade
         const auto& get_next_result(const result_selection selection) const
         {
             if (results.empty()) throw std::logic_error{ "results can't be empty" };
-            if (current_result > results.size()) {
+            if (current_result >= results.size()) {
                 if (selection == result_selection::once) {
                     throw std::logic_error{ "method results are exceeded for" /*put name here*/ };
                 }

@@ -44,7 +44,7 @@ namespace test_classes
         std::string template_function(T1 t1, T2 t2)
         {
             return std::string{ "template_function: " }
-            +typeid(t1).name() + " " + typeid(t2).name();
+                + typeid(t1).name() + " " + typeid(t2).name();
         }
     };
 
@@ -81,6 +81,11 @@ void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& ori
     do_compare_results(facade, original, template_function, 100, 500.f);
 }
 
+void test_exceptions(test_classes::foo_facade& facade)
+{
+    facade.input_output_function(true, 43, std::string{});
+}
+
 TEST(basic, compare_results)
 {
     {
@@ -97,6 +102,7 @@ TEST(basic, compare_results)
         test_classes::foo_facade facade{ "calls.json" };
         test_classes::foo original;
         compare_foo_result(facade, original);
+        test_exceptions(facade);
     }
 }
 
