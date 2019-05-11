@@ -9,11 +9,11 @@ version: 1.0.{build}
 # version: 1.0.{build}-{branch}
 
 # branches to build
-branches:
+#branches:
   # whitelist
   #only:
   #  - master
-  
+
 skip_commits:
   files:
     - README.md
