@@ -65,7 +65,7 @@ public:
 };
 ```
 * `FACADE_CONSTRUCTOR` declares pre-defined constructors of the class, two for initializing it with a reference to the original implementation and another one for providing a path to a file with a recorded database.
-* `FACADE_METHOD` expands into a "trampoline" function that captures the details of the method call, i.e. method name, argument types, return type
+* `FACADE_METHOD` expands into a "trampoline" function that captures the details of the method call, i.e. method name, arguments before and after the call, return value
   * The method *does not* have to be virtual, at the current state there are no strict requirements, the plan is to support any kind of member function: non-const, const, virtual, non-virtual, template, static
   
 Then you create a recording of `network_interface`'s behavior:
