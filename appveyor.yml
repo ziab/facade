@@ -9,10 +9,12 @@ version: 1.0.{build}
 # version: 1.0.{build}-{branch}
 
 # branches to build
-#branches:
+branches:
   # whitelist
   #only:
   #  - master
+  except:
+    - README.md
 
 clone_folder: c:\projects\facade
 image:
