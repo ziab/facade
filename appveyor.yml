@@ -13,7 +13,9 @@ branches:
   # whitelist
   #only:
   #  - master
-  except:
+  
+skip_commits:
+  files:
     - README.md
     - .travis.yml
 
