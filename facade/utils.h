@@ -1,4 +1,5 @@
 #include <chrono>
+#include <iostream>
 
 namespace facade
 {
@@ -47,7 +48,7 @@ namespace facade
                 m_time_started = std::chrono::system_clock::now();
             }
 
-            template <typename t_duration = t_duration_resolution>
+            template <typename t_duration>
             uint64_t get_duration() const
             {
                 const auto now = std::chrono::system_clock::now();

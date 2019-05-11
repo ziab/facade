@@ -54,4 +54,4 @@ build:
 
 
 test_script:
-  - cmd: build\test\Release\test.exe
+  - cmd: build\facade_test\Release\facade_test.exe
