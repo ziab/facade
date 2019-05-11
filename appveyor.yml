@@ -15,6 +15,7 @@ branches:
   #  - master
   except:
     - README.md
+    - .travis.yml
 
 clone_folder: c:\projects\facade
 image:
