@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <any>
 #include <atomic>
+#icnlude <thread>
 
 #include "utils.h"
 
@@ -300,7 +301,7 @@ namespace facade
             } else {
                 method(std::forward<t_actual_args>(args)...);
             }
-            this_call_result.duration = timer.get_duration();
+            this_call_result.duration = timer.get_duration<t_duration_resolution>();
             record_args(this_call_result.post_args, std::forward<t_actual_args>(args)...);
             insert_method_call(method_name, pre_args, std::move(this_call_result));
             if constexpr (has_return) {
