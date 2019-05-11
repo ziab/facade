@@ -11,7 +11,8 @@ target_include_directories(facade INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/../depends/digestpp
 	)
 
-if (GNU)
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+  # using GCC
 	# can remove if gcc-9 is used
 	target_link_libraries(facade INTERFACE stdc++fs)
 endif()
