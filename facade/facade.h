@@ -25,10 +25,10 @@
 template<typename ...t_args>\
 auto _NAME(t_args&& ... args)\
 {\
-    using t_ret = decltype(m_impl._NAME(std::forward<t_args>(args)...));\
+    using t_ret = decltype(m_impl._NAME(args...));\
     using t_method = t_ret(t_args...);\
     std::function lambda{ [this](t_args&&... args) -> t_ret {\
-        return m_impl._NAME(std::forward<t_args>(args)...);\
+        return m_impl._NAME(args...);\
     } };\
     return call_method<t_ret>(\
         lambda,\
