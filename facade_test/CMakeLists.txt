@@ -23,13 +23,13 @@ endif()
 
 file(GLOB_RECURSE cppfiles "*.cpp")
 # Add source to this project's executable.
-add_executable (test ${cppfiles})
+add_executable (facade_test ${cppfiles})
 
-target_link_libraries(test PRIVATE facade)
+target_link_libraries(facade_test PRIVATE facade)
 
-target_link_libraries(test PRIVATE gtest)
+target_link_libraries(facade_test PRIVATE gtest)
 
 # TODO: Add tests and install targets if needed.
-set_target_properties(test PROPERTIES
+set_target_properties(facade_test PROPERTIES
             CXX_STANDARD 17
             CXX_EXTENSIONS OFF)
