@@ -27,6 +27,6 @@ script:
   - cd build
   - cmake ..
   - make
+  - ./facade_test/facade_test
 
 after_success:
-  - cd ${TRAVIS_BUILD_DIR}
