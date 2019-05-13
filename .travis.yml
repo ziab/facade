@@ -27,7 +27,6 @@ script:
   - cd build
   - cmake ..
   - make
+  - facade_test
 
 after_success:
-  - cd build
-  - facade_test
