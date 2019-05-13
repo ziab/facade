@@ -23,8 +23,15 @@ namespace test_classes
 {
     class foo
     {
+    public:
+        using t_input_output_function_cbk = bool(bool param1, int param2);
+
+    private:
         const bool expected_param1{ true };
         const int expected_param2{ 42 };
+
+        t_input_output_function_cbk* m_input_output_function_cbk{ nullptr };
+
     public:
         foo() {};
 
@@ -46,6 +53,11 @@ namespace test_classes
             return std::string{ "template_function: " }
                 + typeid(t1).name() + " " + typeid(t2).name();
         }
+
+        void register_input_output_function_cbk(t_input_output_function_cbk* cbk)
+        {
+            m_input_output_function_cbk = cbk;
+        }
     };
 
     class foo_facade : public facade::facade<foo>
@@ -57,6 +69,7 @@ namespace test_classes
         FACADE_METHOD(const_no_input_function);
         FACADE_METHOD(input_output_function);
         FACADE_METHOD(template_function);
+        FACADE_CALLBACK(input_output_function_cbk, bool, bool param1, int param2);
     };
 }
 
@@ -96,6 +109,7 @@ TEST(basic, compare_results)
         compare_foo_result(facade, original);
         facade.write_calls("calls.json");
         //utils::print_json("calls.json");
+        facade.register_callback_input_output_function_cbk(nullptr);
     }
     {
         // Compare replaying facade with the original implementation

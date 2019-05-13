@@ -36,6 +36,17 @@ auto _NAME(t_args&& ... args)\
         std::forward<t_args>(args)...);\
 }\
 
+#define FACADE_CALLBACK(_NAME, _RET, ...)\
+using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;\
+void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)\
+{\
+    \
+}\
+std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()\
+{\
+    return [this](__VA_ARGS__) -> _RET { return _RET{}; };\
+}\
+
 #define FACADE_CONSTRUCTOR(_name) \
 _name(t_impl_type& impl, bool record) : facade(#_name, impl, record) {}\
 _name(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_name, std::move(ptr), record) {}\
