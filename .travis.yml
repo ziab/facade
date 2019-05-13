@@ -29,4 +29,5 @@ script:
   - make
 
 after_success:
+  - cd build
   - facade_test
