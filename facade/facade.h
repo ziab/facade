@@ -36,15 +36,21 @@ auto _NAME(t_args&& ... args)\
         std::forward<t_args>(args)...);\
 }\
 
-#define FACADE_CALLBACK(_NAME, _RET, ...)\
-using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;\
-void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)\
-{\
-    \
-}\
+#define FACADE_CALLBACK(_NAME, _RET, ...) \
+public: \
+using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>; \
+private: \
+t_cbk_func_##_NAME m_cbk_func_##_NAME; \
+public: \
+void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk) \
+{ \
+    m_cbk_func_##_NAME = cbk;\
+} \
+ \
 std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()\
 {\
-    return [this](__VA_ARGS__) -> _RET { return _RET{}; };\
+    return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>(\
+        m_cbk_func_##_NAME, #_NAME);\
 }\
 
 #define FACADE_CONSTRUCTOR(_name) \
@@ -102,6 +108,7 @@ namespace facade
 
     struct method_call
     {
+        std::string name;
         std::string pre_args;
         std::vector<method_result> results;
         mutable size_t current_result{ 0 };
@@ -166,6 +173,9 @@ namespace facade
             std::unordered_map<
                 std::string,
                 method_call>> m_calls;
+
+        std::list<method_call> m_callbacks;
+
         std::mutex m_mtx;
         std::string m_name;
 
@@ -174,6 +184,10 @@ namespace facade
     public:
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
+        using t_method_record_inserter = void(
+            const std::string& method_name,
+            std::string& pre_args,
+            method_result&& result);
 
         void load(const std::filesystem::path& file)
         {
@@ -244,7 +258,7 @@ namespace facade
         }
 
         template <typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
-        typename std::decay<t_ret>::type call_method_play(
+        typename std::decay<t_ret>::type replay_function_call(
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -287,6 +301,7 @@ namespace facade
             if (method_call_it == method_calls.end())
             {
                 method_call method_call;
+                method_call.name = method_name;
                 method_call.pre_args = std::move(pre_args);
                 method_call_it = method_calls.insert({ hash, std::move(method_call) }).first;
             }
@@ -294,10 +309,23 @@ namespace facade
             method_call_it->second.results.emplace_back(std::move(result));
         }
 
+        void insert_callback_call(
+            const std::string& method_name,
+            std::string& pre_args,
+            method_result&& result)
+        {
+            t_lock_guard lg(m_mtx);
+            method_call method_call;
+            method_call.pre_args = std::move(pre_args);
+            method_call.results.emplace_back(std::move(result));
+            m_callbacks.emplace_back(std::move(method_call));
+        }
+
         template <typename t_ret, typename t_method, typename ...t_actual_args>
-        typename std::decay<t_ret>::type call_method_and_record(
+        typename std::decay<t_ret>::type call_function_and_record(
             t_method&& method,
             const std::string& method_name,
+            const std::function<t_method_record_inserter>& inserter,
             t_actual_args&& ... args)
         {
             std::string pre_args;
@@ -314,14 +342,14 @@ namespace facade
             }
             this_call_result.duration = timer.get_duration<t_duration_resolution>();
             record_args(this_call_result.post_args, std::forward<t_actual_args>(args)...);
-            insert_method_call(method_name, pre_args, std::move(this_call_result));
+            inserter(method_name, pre_args, std::move(this_call_result));
             if constexpr (has_return) {
                 return std::any_cast<t_ret>(ret);
             }
         }
 
         template <typename t_ret, typename t_method, class ...t_expected_args, typename ...t_actual_args>
-        typename std::decay<t_ret>::type call_method_pass_through(
+        typename std::decay<t_ret>::type pass_through(
             t_method&& method,
             const std::string& method_name,
             t_actual_args&& ... args)
@@ -337,18 +365,62 @@ namespace facade
         {
             if (m_playing)
             {
-                return call_method_play<t_ret>(
+                return replay_function_call<t_ret>(
                     method, method_name, std::forward<t_actual_args>(args)...);
             }
             if (m_recording) {
-                return call_method_and_record<t_ret>(
-                    method, method_name, std::forward<t_actual_args>(args)...);
+                auto inserter = [this](const std::string & method_name,
+                    std::string & pre_args, method_result && result) -> void
+                {
+                    insert_method_call(method_name, pre_args, std::move(result));
+                };
+                return call_function_and_record<t_ret>(
+                    method, method_name, inserter, std::forward<t_actual_args>(args)...);
             }
             else {
-                return call_method_pass_through<t_ret>(
+                return pass_through<t_ret>(
                     method, method_name, std::forward<t_actual_args>(args)...);
             }
         }
+
+        template <typename t_ret, typename t_method, typename ...t_actual_args>
+        typename std::decay<t_ret>::type call_callback(
+            t_method&& method,
+            const std::string& method_name,
+            t_actual_args&& ... args)
+        {
+            if (m_playing)
+            {
+                throw std::runtime_error("call_callback is not expected to be called during m_playing == true");
+            }
+            if (m_recording) {
+                auto inserter = [this](const std::string & method_name,
+                    std::string & pre_args, method_result && result) -> void
+                {
+                    insert_callback_call(method_name, pre_args, std::move(result));
+                };
+                return call_function_and_record<t_ret>(
+                    method, method_name, inserter, std::forward<t_actual_args>(args)...);
+            }
+            else {
+                return pass_through<t_ret>(
+                    method, method_name, std::forward<t_actual_args>(args)...);
+            }
+        }
+
+        template <typename t_ret, typename t_method, typename ...t_actual_args>
+        auto create_callback_wrapper(
+            t_method method,
+            const std::string& method_name)
+        {
+            return [this, method, method_name](t_actual_args... args) -> t_ret {
+                return call_callback<t_ret>(
+                    method,
+                    method_name,
+                    args...);
+            };
+        }
+
 
     public:
         using t_impl_type = t_type;
@@ -367,4 +439,10 @@ namespace facade
             facade_base(std::move(name), file),
             m_impl(*m_ptr) {}
     };
+
+    template<typename t_impl_type>
+    facade<t_impl_type> create_facade(const std::function<std::unique_ptr<t_impl_type>(facade<t_impl_type>)>& initializer)
+    {
+
+    }
 }

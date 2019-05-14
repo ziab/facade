@@ -24,7 +24,7 @@ namespace test_classes
     class foo
     {
     public:
-        using t_input_output_function_cbk = bool(bool param1, int param2);
+        using t_input_output_function_cbk = void(bool param1, int param2);
 
     private:
         const bool expected_param1{ true };
@@ -69,7 +69,7 @@ namespace test_classes
         FACADE_METHOD(const_no_input_function);
         FACADE_METHOD(input_output_function);
         FACADE_METHOD(template_function);
-        FACADE_CALLBACK(input_output_function_cbk, bool, bool param1, int param2);
+        FACADE_CALLBACK(input_output_function_cbk, void, bool, int);
     };
 }
 
@@ -99,6 +99,11 @@ void test_exceptions(test_classes::foo_facade& facade)
     facade.input_output_function(true, 43, std::string{});
 }
 
+void foo_callback(bool param1, int param2)
+{
+    std::cout << "foo_callback is called with " << param1 << " " << param2 << std::endl;
+}
+
 TEST(basic, compare_results)
 {
     {
@@ -108,8 +113,8 @@ TEST(basic, compare_results)
         test_classes::foo original;
         compare_foo_result(facade, original);
         facade.write_calls("calls.json");
-        //utils::print_json("calls.json");
-        facade.register_callback_input_output_function_cbk(nullptr);
+        utils::print_json("calls.json");
+        facade.register_callback_input_output_function_cbk(foo_callback);
     }
     {
         // Compare replaying facade with the original implementation
