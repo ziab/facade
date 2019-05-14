@@ -24,19 +24,19 @@
 #include <algorithm/md5.hpp> // digestcpp
 
 #define FACADE_METHOD(_NAME) \
-template<typename ...t_args>\
-auto _NAME(t_args&& ... args)\
-{\
-    using t_ret = decltype(m_impl->_NAME(args...));\
-    using t_method = t_ret(t_args...);\
-    std::function lambda{ [this](t_args&&... args) -> t_ret {\
-        return m_impl->_NAME(args...);\
-    } };\
-    return call_method<t_ret>(\
-        lambda,\
-        #_NAME,\
-        std::forward<t_args>(args)...);\
-}\
+template<typename ...t_args> \
+auto _NAME(t_args&& ... args) \
+{ \
+    using t_ret = decltype(m_impl->_NAME(args...)); \
+    using t_method = t_ret(t_args...); \
+    std::function lambda{ [this](t_args&&... args) -> t_ret { \
+        return m_impl->_NAME(args...); \
+    } }; \
+    return call_method<t_ret>( \
+        lambda, \
+        #_NAME, \
+        std::forward<t_args>(args)...); \
+} \
 
 #define FACADE_CALLBACK(_NAME, _RET, ...) \
 public: \
@@ -46,20 +46,20 @@ t_cbk_func_##_NAME m_cbk_func_##_NAME; \
 public: \
 void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk) \
 { \
-    m_cbk_func_##_NAME = cbk;\
+    m_cbk_func_##_NAME = cbk; \
 } \
- \
-std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()\
-{\
-    return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>(\
-        m_cbk_func_##_NAME, #_NAME);\
-}\
+\
+std::function<_RET(__VA_ARGS__)> get_callback_##_NAME() \
+{ \
+    return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>( \
+        m_cbk_func_##_NAME, #_NAME); \
+} \
 
 #define FACADE_CONSTRUCTOR(_NAME) \
 using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>; \
-_NAME(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_NAME, std::move(ptr), record) {}\
-_NAME(const std::filesystem::path& file) : facade(#_NAME, file) {}\
-void rewire_callbacks(const t_callback_initializer& rewire) { rewire(*m_impl, *this); }\
+_NAME(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_NAME, std::move(ptr), record) {} \
+_NAME(const std::filesystem::path& file) : facade(#_NAME, file) {} \
+void rewire_callbacks(const t_callback_initializer& rewire) { rewire(*m_impl, *this); } \
 
 namespace facade
 {
@@ -323,6 +323,7 @@ namespace facade
         {
             t_lock_guard lg(m_mtx);
             method_call method_call;
+            method_call.name = method_name;
             method_call.pre_args = std::move(pre_args);
             method_call.results.emplace_back(std::move(result));
             m_callbacks.emplace_back(std::move(method_call));
