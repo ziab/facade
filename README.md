@@ -88,7 +88,7 @@ void run()
 }
 ```
 
-The database is stored as a JSON file:
+The first block creates a "recording" facade of `network_interface`, each call to it is recroded into an internal database-like structure. `net.write_calls("network_interface.json")` saves the database into a JSON file that can be later loaded, example:
 
 ```json
 {
@@ -128,6 +128,11 @@ The database is stored as a JSON file:
         },
         ...
 ```
+
+`network_interface_facade net{ "network_interface.json" };` creates a "replaying" facade that will use data from the JSON file. Every call(a call is defined by a unique combination of input parameters) that has been recorded before will be "replayable", meaning that the return value and out parameters will be initialized with what they were during recording.
+
+Check this [example](example/example.cpp) or [unit test folder](facade_test) for more information
+
 Credits:
 * [cereal](https://github.com/USCiLab/cereal)
 * [digestpp](https://github.com/kerukuro/digestpp)
