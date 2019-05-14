@@ -47,7 +47,7 @@ t_cbk_func_##_NAME m_cbk_func_##_NAME; \
 public: \
 void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk) \
 { \
-    m_callback_invokers[#_NAME] = [this](const ::facade::method_call& call) \
+    m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) \
     { \
         invoke_##_NAME(call); \
     };\
@@ -59,7 +59,7 @@ std::function<_RET(__VA_ARGS__)> get_callback_##_NAME() \
     return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>( \
         m_cbk_func_##_NAME, #_NAME); \
 } \
-void invoke_##_NAME(const ::facade::method_call& call) \
+void invoke_##_NAME(const ::facade::function_call& call) \
 { \
     std::any ret; \
     std::tuple<__VA_ARGS__> args; \
@@ -75,14 +75,14 @@ void rewire_callbacks(const t_callback_initializer& rewire) { rewire(*m_impl, *t
 
 namespace facade
 {
-    struct method_call;
-    struct method_result;
+    struct function_call;
+    struct function_result;
 }
 
 namespace cereal
 {
     template<class t_archive>
-    void serialize(t_archive& archive, facade::method_call& call)
+    void serialize(t_archive& archive, facade::function_call& call)
     {
         archive(
             cereal::make_nvp("name", call.name),
@@ -91,7 +91,7 @@ namespace cereal
     }
 
     template<class t_archive>
-    void serialize(t_archive& archive, facade::method_result& result)
+    void serialize(t_archive& archive, facade::function_result& result)
     {
         archive(
             cereal::make_nvp("post_args", result.post_args),
@@ -114,7 +114,7 @@ namespace facade
         cycle
     };
 
-    struct method_result
+    struct function_result
     {
         std::string post_args;
         std::string ret;
@@ -122,11 +122,11 @@ namespace facade
         uint64_t duration; // std::chrono::microseconds
     };
 
-    struct method_call
+    struct function_call
     {
         std::string name;
         std::string pre_args;
-        std::vector<method_result> results;
+        std::vector<function_result> results;
         mutable size_t current_result{ 0 };
 
         const auto& get_next_result(const result_selection selection) const
@@ -142,6 +142,8 @@ namespace facade
             }
             return results[current_result++];
         }
+
+        auto get_first_offset() const { return results.at(0).offest_since_epoch; }
     };
 
     template<typename t_archive>
@@ -178,7 +180,7 @@ namespace facade
 
     template <typename t_ret, typename ...t_actual_args>
     void unpack_callback(
-        const method_call& this_call,
+        const function_call& this_call,
         std::any& ret,
         std::tuple<t_actual_args...>& args)
     {
@@ -196,13 +198,13 @@ namespace facade
             std::string, 
             std::unordered_map<
                 std::string,
-                method_call>> m_calls;
+                function_call>> m_calls;
 
-        std::list<method_call> m_callbacks;
+        std::list<function_call> m_callbacks;
 
         std::unordered_map<
             std::string,
-            std::function<void(const method_call&)>> m_callback_invokers;
+            std::function<void(const function_call&)>> m_callback_invokers;
 
         std::mutex m_mtx;
         std::string m_name;
@@ -215,7 +217,7 @@ namespace facade
         using t_method_record_inserter = void(
             const std::string& method_name,
             std::string& pre_args,
-            method_result&& result);
+            function_result&& result);
 
         void load(const std::filesystem::path& file)
         {
@@ -323,17 +325,17 @@ namespace facade
         void insert_method_call(
             const std::string& method_name, 
             std::string& pre_args, 
-            method_result&& result)
+            function_result&& result)
         {
             const auto hash = calculate_hash(pre_args);
             t_lock_guard lg(m_mtx);
             auto& method_calls = m_calls[method_name];
             auto method_call_it = method_calls.find(hash);
             if (method_call_it == method_calls.end()) {
-                method_call method_call;
-                method_call.name = method_name;
-                method_call.pre_args = std::move(pre_args);
-                method_call_it = method_calls.insert({ hash, std::move(method_call) }).first;
+                function_call function_call;
+                function_call.name = method_name;
+                function_call.pre_args = std::move(pre_args);
+                method_call_it = method_calls.insert({ hash, std::move(function_call) }).first;
             }
 
             method_call_it->second.results.emplace_back(std::move(result));
@@ -342,14 +344,14 @@ namespace facade
         void insert_callback_call(
             const std::string& method_name,
             std::string& pre_args,
-            method_result&& result)
+            function_result&& result)
         {
             t_lock_guard lg(m_mtx);
-            method_call method_call;
-            method_call.name = method_name;
-            method_call.pre_args = std::move(pre_args);
-            method_call.results.emplace_back(std::move(result));
-            m_callbacks.emplace_back(std::move(method_call));
+            function_call callback_call;
+            callback_call.name = method_name;
+            callback_call.pre_args = std::move(pre_args);
+            callback_call.results.emplace_back(std::move(result));
+            m_callbacks.emplace_back(std::move(callback_call));
         }
 
         template <typename t_ret, typename t_method, typename ...t_actual_args>
@@ -361,7 +363,7 @@ namespace facade
         {
             std::string pre_args;
             record_args(pre_args, std::forward<t_actual_args>(args)...);
-            method_result this_call_result;
+            function_result this_call_result;
             utils::timer timer;
             std::any ret;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
@@ -400,7 +402,7 @@ namespace facade
             }
             if (m_recording) {
                 auto inserter = [this](const std::string & method_name,
-                    std::string & pre_args, method_result && result) -> void {
+                    std::string & pre_args, function_result && result) -> void {
                     insert_method_call(method_name, pre_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
@@ -424,7 +426,7 @@ namespace facade
             }
             if (m_recording) {
                 auto inserter = [this](const std::string & method_name,
-                    std::string & pre_args, method_result && result) -> void {
+                    std::string & pre_args, function_result && result) -> void {
                     insert_callback_call(method_name, pre_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
