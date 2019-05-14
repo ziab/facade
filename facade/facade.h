@@ -11,6 +11,7 @@
 #include <any>
 #include <atomic>
 #include <thread>
+#include <list>
 
 #include "utils.h"
 
@@ -25,10 +26,10 @@
 template<typename ...t_args>\
 auto _NAME(t_args&& ... args)\
 {\
-    using t_ret = decltype(m_impl._NAME(args...));\
+    using t_ret = decltype(m_impl->_NAME(args...));\
     using t_method = t_ret(t_args...);\
     std::function lambda{ [this](t_args&&... args) -> t_ret {\
-        return m_impl._NAME(args...);\
+        return m_impl->_NAME(args...);\
     } };\
     return call_method<t_ret>(\
         lambda,\
@@ -54,9 +55,9 @@ std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()\
 }\
 
 #define FACADE_CONSTRUCTOR(_name) \
-_name(t_impl_type& impl, bool record) : facade(#_name, impl, record) {}\
 _name(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_name, std::move(ptr), record) {}\
 _name(const std::filesystem::path& file) : facade(#_name, file) {}\
+_name(const t_initializer& initializer, bool record) : facade(#_name, initializer, record) {}\
 
 namespace facade
 {
@@ -232,8 +233,7 @@ namespace facade
     class facade : public facade_base
     {
     protected:
-        std::unique_ptr<t_type> m_ptr;
-        t_type& m_impl;
+        std::unique_ptr<t_type> m_impl;
         result_selection m_selection{ result_selection::cycle };
 
         template<typename ...t_args>
@@ -425,24 +425,23 @@ namespace facade
     public:
         using t_impl_type = t_type;
         using t_const_impl_type = typename std::add_const<t_type>::type;
-
-        facade(std::string name, t_type& impl, bool record) : 
-            facade_base(std::move(name), record),
-            m_impl(impl) {}
+        using t_initializer = std::function<std::unique_ptr<t_impl_type>(facade<t_impl_type>&)>;
 
         facade(std::string name, std::unique_ptr<t_type>&& ptr, bool record) :
             facade_base(std::move(name), record),
-            m_ptr(std::move(ptr)), 
-            m_impl(*m_ptr) {}
+            m_impl(std::move(ptr)) {}
 
         facade(std::string name, const std::filesystem::path& file) :
-            facade_base(std::move(name), file),
-            m_impl(*m_ptr) {}
+            facade_base(std::move(name), file) {}
+
+        facade(std::string name, const t_initializer& initializer, bool record) :
+            facade_base(std::move(name), record),
+            m_impl(initializer(*this)) {}
     };
 
     template<typename t_impl_type>
-    facade<t_impl_type> create_facade(const std::function<std::unique_ptr<t_impl_type>(facade<t_impl_type>)>& initializer)
+    facade<t_impl_type> create_facade(const typename facade<t_impl_type>::t_initializer& initializer, bool record)
     {
-
+        return facade<t_impl_type>{ initializer, record };
     }
 }
