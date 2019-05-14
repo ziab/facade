@@ -107,7 +107,7 @@ namespace facade
         std::string post_args;
         std::string ret;
         uint64_t offest_since_epoch;
-        uint64_t duration;
+        uint64_t duration; // std::chrono::microseconds
     };
 
     struct method_call
