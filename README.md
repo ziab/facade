@@ -69,6 +69,7 @@ public:
 * `FACADE_CONSTRUCTOR` declares pre-defined constructors of the class, two for initializing it with a reference to the original implementation and another one for providing a path to a file with a recorded database.
 * `FACADE_METHOD` expands into a "trampoline" function that captures the details of the method call, i.e. method name, arguments before and after the call, return value
   * The method *does not* have to be virtual, at the current state there are no strict requirements, the plan is to support any kind of member function: non-const, const, virtual, non-virtual, template, static
+* `FACADE_CALLBACK` exapands into a "trempoline" function and a callback registration function, more information on this will be added later
   
 Then you create a recording of `network_interface`'s behavior:
 ```cpp
@@ -87,7 +88,7 @@ void run()
 }
 ```
 
-The database is stored as a JSON file:
+The first block creates a "recording" facade of `network_interface`, each call to it is recroded into an internal database-like structure. `net.write_calls("network_interface.json")` saves the database into a JSON file that can be later loaded, example:
 
 ```json
 {
@@ -127,6 +128,11 @@ The database is stored as a JSON file:
         },
         ...
 ```
+
+`network_interface_facade net{ "network_interface.json" };` creates a "replaying" facade that will use data from the JSON file. Every call(a call is defined by a unique combination of input parameters) that has been recorded before will be "replayable", meaning that the return value and out parameters will be initialized with what they were during recording.
+
+Check this [example](example/example.cpp) or [unit test folder](facade_test) for more information
+
 Credits:
 * [cereal](https://github.com/USCiLab/cereal)
 * [digestpp](https://github.com/kerukuro/digestpp)
