@@ -47,6 +47,10 @@ t_cbk_func_##_NAME m_cbk_func_##_NAME; \
 public: \
 void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk) \
 { \
+    m_callback_invokers[#_NAME] = [this](const ::facade::method_call& call) \
+    { \
+        invoke_##_NAME(call); \
+    };\
     m_cbk_func_##_NAME = cbk; \
 } \
 \
@@ -55,11 +59,12 @@ std::function<_RET(__VA_ARGS__)> get_callback_##_NAME() \
     return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>( \
         m_cbk_func_##_NAME, #_NAME); \
 } \
-void invoke(::facade::method_call& call) \
+void invoke_##_NAME(const ::facade::method_call& call) \
 { \
     std::any ret; \
     std::tuple<__VA_ARGS__> args; \
     ::facade::unpack_callback<_RET>(call, ret, args);\
+    std::apply(m_cbk_func_##_NAME, args); \
 } \
 
 #define FACADE_CONSTRUCTOR(_NAME) \
@@ -194,6 +199,10 @@ namespace facade
                 method_call>> m_calls;
 
         std::list<method_call> m_callbacks;
+
+        std::unordered_map<
+            std::string,
+            std::function<void(const method_call&)>> m_callback_invokers;
 
         std::mutex m_mtx;
         std::string m_name;
