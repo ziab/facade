@@ -19,6 +19,7 @@
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/vector.hpp>
+#include <cereal/types/list.hpp>
 
 #include <algorithm/md5.hpp> // digestcpp
 
@@ -54,10 +55,11 @@ std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()\
         m_cbk_func_##_NAME, #_NAME);\
 }\
 
-#define FACADE_CONSTRUCTOR(_name) \
-_name(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_name, std::move(ptr), record) {}\
-_name(const std::filesystem::path& file) : facade(#_name, file) {}\
-_name(const t_initializer& initializer, bool record) : facade(#_name, initializer, record) {}\
+#define FACADE_CONSTRUCTOR(_NAME) \
+using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>; \
+_NAME(std::unique_ptr<t_impl_type> ptr, bool record) : facade(#_NAME, std::move(ptr), record) {}\
+_NAME(const std::filesystem::path& file) : facade(#_NAME, file) {}\
+void rewire_callbacks(const t_callback_initializer& rewire) { rewire(*m_impl, *this); }\
 
 namespace facade
 {
@@ -71,6 +73,7 @@ namespace cereal
     void serialize(t_archive& archive, facade::method_call& call)
     {
         archive(
+            cereal::make_nvp("name", call.name),
             cereal::make_nvp("pre_args", call.pre_args),
             cereal::make_nvp("results", call.results));
     }
@@ -207,6 +210,7 @@ namespace facade
             }
 
             archive(cereal::make_nvp("calls", m_calls));
+            archive(cereal::make_nvp("callbacks", m_callbacks));
         }
 
         facade_base(std::string name, bool recording) : 
@@ -225,7 +229,10 @@ namespace facade
             t_lock_guard lg(m_mtx);
             std::ofstream ofs(path);
             t_cereal_output_archive archive{ ofs };
-            archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls));
+            archive(
+                cereal::make_nvp("name", m_name), 
+                cereal::make_nvp("calls", m_calls), 
+                cereal::make_nvp("callbacks", m_callbacks));
         }
     };
 
@@ -425,7 +432,6 @@ namespace facade
     public:
         using t_impl_type = t_type;
         using t_const_impl_type = typename std::add_const<t_type>::type;
-        using t_initializer = std::function<std::unique_ptr<t_impl_type>(facade<t_impl_type>&)>;
 
         facade(std::string name, std::unique_ptr<t_type>&& ptr, bool record) :
             facade_base(std::move(name), record),
@@ -433,15 +439,5 @@ namespace facade
 
         facade(std::string name, const std::filesystem::path& file) :
             facade_base(std::move(name), file) {}
-
-        facade(std::string name, const t_initializer& initializer, bool record) :
-            facade_base(std::move(name), record),
-            m_impl(initializer(*this)) {}
     };
-
-    template<typename t_impl_type>
-    facade<t_impl_type> create_facade(const typename facade<t_impl_type>::t_initializer& initializer, bool record)
-    {
-        return facade<t_impl_type>{ initializer, record };
-    }
 }

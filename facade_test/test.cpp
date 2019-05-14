@@ -30,7 +30,7 @@ namespace test_classes
         const bool expected_param1{ true };
         const int expected_param2{ 42 };
 
-        t_input_output_function_cbk* m_input_output_function_cbk{ nullptr };
+        std::function<t_input_output_function_cbk> m_input_output_function_cbk{ nullptr };
 
     public:
         foo() {};
@@ -40,6 +40,9 @@ namespace test_classes
         std::string const_no_input_function() const { return "100500"; }
         bool input_output_function(bool param1, int param2, std::string& output)
         {
+            // use callback
+            if (m_input_output_function_cbk) m_input_output_function_cbk(param1, param2);
+
             if (param1 == expected_param1 && expected_param2 == 42) {
                 output = "There is some data";
                 return 1;
@@ -54,7 +57,7 @@ namespace test_classes
                 + typeid(t1).name() + " " + typeid(t2).name();
         }
 
-        void register_input_output_function_cbk(t_input_output_function_cbk* cbk)
+        void register_input_output_function_cbk(const std::function<t_input_output_function_cbk>& cbk)
         {
             m_input_output_function_cbk = cbk;
         }
@@ -106,15 +109,22 @@ void foo_callback(bool param1, int param2)
 
 TEST(basic, compare_results)
 {
+    using namespace test_classes;
     {
         // Compare recording facade with the original implementation
-        auto impl = std::make_unique<test_classes::foo>();
-        test_classes::foo_facade facade{ std::move(impl), true };
+        auto impl = std::make_unique<foo>();
+        foo_facade facade{ std::move(impl), true };
+
+        facade.rewire_callbacks([](foo & impl, foo_facade & facade)
+        {
+            facade.register_callback_input_output_function_cbk(foo_callback);
+            impl.register_input_output_function_cbk(facade.get_callback_input_output_function_cbk());
+        });
+
         test_classes::foo original;
         compare_foo_result(facade, original);
         facade.write_calls("calls.json");
         utils::print_json("calls.json");
-        facade.register_callback_input_output_function_cbk(foo_callback);
     }
     {
         // Compare replaying facade with the original implementation
