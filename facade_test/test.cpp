@@ -124,13 +124,14 @@ TEST(basic, compare_results)
 
         test_classes::foo original;
         compare_foo_result(facade, original);
-        facade.write_calls("calls.json");
-        utils::print_json("calls.json");
+        facade::master().save_recordings();
+        utils::print_json("foo_facade.json");
     }
     {
         // Compare replaying facade with the original implementation
-        test_classes::foo_facade facade{"calls.json"};
+        test_classes::foo_facade facade;
         test_classes::foo original;
+        facade::master().load_recordings();
         compare_foo_result(facade, original);
         test_exceptions(facade);
     }

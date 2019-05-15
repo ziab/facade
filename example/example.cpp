@@ -84,11 +84,12 @@ namespace example
             auto net_impl = std::make_unique<network_interface>();
             network_interface_facade net{std::move(net_impl), true};
             use_network(net);
-            net.write_calls("network_interface.json");
+            facade::master().save_recordings();
         }
         {
             utils::print_json("network_interface.json");
-            network_interface_facade net{"network_interface.json"};
+            network_interface_facade net;
+            facade::master().load_recordings();
             use_network(net);
         }
     }
