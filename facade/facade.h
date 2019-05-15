@@ -77,12 +77,14 @@ public:                                                                         
         rewire(*m_impl, *this);                                               \
     }
 
-namespace facade {
+namespace facade
+{
     struct function_call;
     struct function_result;
 }  // namespace facade
 
-namespace cereal {
+namespace cereal
+{
     template <class t_archive>
     void serialize(t_archive& archive, facade::function_call& call)
     {
@@ -101,7 +103,8 @@ namespace cereal {
     }
 }  // namespace cereal
 
-namespace facade {
+namespace facade
+{
     using t_duration_resolution = std::chrono::microseconds;
     using t_cereal_output_archive = cereal::JSONOutputArchive;
     using t_cereal_input_archive = cereal::JSONInputArchive;

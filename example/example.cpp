@@ -6,16 +6,15 @@ namespace utils
 {
     void print_json(const std::filesystem::path& path)
     {
-        std::ifstream ifs{ path };
-        while (ifs.good())
-        {
+        std::ifstream ifs{path};
+        while (ifs.good()) {
             char c;
             ifs.read(&c, 1);
             std::cout << c;
         }
         std::cout << std::endl;
     }
-}
+}  // namespace utils
 
 namespace example
 {
@@ -23,11 +22,13 @@ namespace example
     {
         std::string m_ip;
         std::map<std::string, std::string> m_dns_cache;
+
     public:
         bool initialize()
         {
             m_ip = "192.168.1.31";
-            m_dns_cache = { { "mail_server", "192.168.1.3" }, { "message_server", "192.168.1.12"} };
+            m_dns_cache = {
+                {"mail_server", "192.168.1.3"}, {"message_server", "192.168.1.12"}};
             return true;
         }
         const std::string& get_local_ip() const { return m_ip; }
@@ -37,7 +38,8 @@ namespace example
             return "unresolved";
         }
 
-        bool send(const std::string& address, const std::string& message, std::string& reply)
+        bool send(
+            const std::string& address, const std::string& message, std::string& reply)
         {
             if (address == "192.168.1.3" || address == "192.168.1.12") {
                 reply = "Your message: '" + message + "' is delivered";
@@ -57,6 +59,7 @@ namespace example
         FACADE_METHOD(send);
     };
 
+    // clang-format off
     void use_network(network_interface_facade& net)
     {
         std::cout << "Initializing network, result: " << net.initialize() << std::endl;
@@ -73,24 +76,22 @@ namespace example
         result = net.send(mail_server_ip, std::string{ "Hello message server!" }, reply);
         if (result) std::cout << "Received reply from the message server: " << reply << std::endl;
     }
+    // clang-format on
 
     void run()
     {
         {
             auto net_impl = std::make_unique<network_interface>();
-            network_interface_facade net{ std::move(net_impl), true };
+            network_interface_facade net{std::move(net_impl), true};
             use_network(net);
             net.write_calls("network_interface.json");
         }
         {
             utils::print_json("network_interface.json");
-            network_interface_facade net{ "network_interface.json" };
+            network_interface_facade net{"network_interface.json"};
             use_network(net);
         }
     }
-}
+}  // namespace example
 
-int main(int, char**)
-{
-    example::run();
-}
+int main(int, char**) { example::run(); }

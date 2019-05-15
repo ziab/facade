@@ -9,8 +9,10 @@
 #include <thread>
 #include <vector>
 
-namespace facade {
-    namespace utils {
+namespace facade
+{
+    namespace utils
+    {
         template <typename t_function, typename... t_args>
         void thread_starter(
             const size_t thread_id, const t_function& function, t_args... args)

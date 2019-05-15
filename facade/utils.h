@@ -1,9 +1,12 @@
 #include <chrono>
 #include <iostream>
 
-namespace facade {
-    namespace utils {
-        namespace traits {
+namespace facade
+{
+    namespace utils
+    {
+        namespace traits
+        {
             // clang-format off
             template<class t_type>
             struct is_pointer_to_const_member_function : std::false_type {};

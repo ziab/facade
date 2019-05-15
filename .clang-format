@@ -13,6 +13,7 @@ BraceWrapping:
   AfterStruct: true
   AfterEnum: true
   AfterUnion: true
+  AfterNamespace: true
 ColumnLimit: '90'
 IndentWidth: '4'
 NamespaceIndentation: All
