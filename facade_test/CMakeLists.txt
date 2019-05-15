@@ -18,7 +18,7 @@ if (MSVC)
     endforeach()
     
 	add_compile_definitions(_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17 /P")
 endif()
 
 file(GLOB_RECURSE cppfiles "*.cpp")

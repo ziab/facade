@@ -81,6 +81,7 @@ namespace facade
 {
     struct function_call;
     struct function_result;
+    class master;
 }  // namespace facade
 
 namespace cereal
@@ -222,7 +223,7 @@ namespace facade
         {
             std::ifstream ifs(file);
             if (!ifs.good()) {
-                std::runtime_error{
+                throw std::runtime_error{
                     std::string{"failed to load a recording: "} + file.string()};
             }
             t_cereal_input_archive archive{ifs};
@@ -230,7 +231,7 @@ namespace facade
             std::string name;
             archive(cereal::make_nvp("name", name));
             if (name != m_name) {
-                std::runtime_error{
+                throw std::runtime_error{
                     std::string{"name in the recording is not matching: "} + name + " " +
                     m_name};
             }
@@ -268,6 +269,8 @@ namespace facade
             archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls),
                 cereal::make_nvp("callbacks", m_callbacks));
         }
+
+        const std::string& name() const { return m_name; }
 
         ~facade_base()
         {

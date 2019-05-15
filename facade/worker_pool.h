@@ -17,7 +17,7 @@ namespace facade
         void thread_starter(
             const size_t thread_id, const t_function& function, t_args... args)
         {
-            // add here anything need for initializing thread context
+            // add here anything needed for initializing thread context
             function(args...);
         }
 
@@ -42,22 +42,20 @@ namespace facade
             size_t m_current_workload{0};
             std::vector<std::thread> m_workers;
             std::queue<t_task> m_task_queue;
-
-            using t_task_queue = decltype(m_task_queue);
-
             mutable std::mutex m_queue_mutex;
             std::condition_variable m_cv;
             bool m_running{false};
 
-            using lock_guard = std::lock_guard<decltype(m_queue_mutex)>;
-            using unique_lock = std::unique_lock<decltype(m_queue_mutex)>;
+            using t_task_queue = decltype(m_task_queue);
+            using t_lock_guard = std::lock_guard<decltype(m_queue_mutex)>;
+            using t_unique_lock = std::unique_lock<decltype(m_queue_mutex)>;
 
         private:
             std::pair<bool, t_task> get_next_task()
             {
                 t_task task;
                 {
-                    unique_lock ulck(m_queue_mutex);
+                    t_unique_lock ulck(m_queue_mutex);
                     while (m_task_queue.empty() && m_running) { m_cv.wait(ulck); }
 
                     if (!m_running) return {false, t_task{}};
@@ -85,7 +83,7 @@ namespace facade
                         continue;
                     }
                     {
-                        lock_guard lg(m_queue_mutex);
+                        t_lock_guard lg(m_queue_mutex);
                         m_current_workload--;
                     }
                     m_cv.notify_all();
@@ -104,7 +102,7 @@ namespace facade
 
             auto wait_completion_and_get_lock()
             {
-                unique_lock ulck(m_queue_mutex);
+                t_unique_lock ulck(m_queue_mutex);
                 while (!m_task_queue.empty() && m_running || m_current_workload != 0) {
                     m_cv.wait(ulck);
                 }
@@ -140,7 +138,7 @@ namespace facade
             template <typename t_function, typename... t_args>
             auto submit(t_function&& function, t_args&&... args)
             {
-                lock_guard lg(m_queue_mutex);
+                t_lock_guard lg(m_queue_mutex);
 
                 if (thread_belongs_to_pool()) {
                     assert(
@@ -170,7 +168,7 @@ namespace facade
             bool is_running() const { return m_running; }
             bool has_work() const
             {
-                lock_guard lg(m_queue_mutex);
+                t_lock_guard lg(m_queue_mutex);
                 return !m_task_queue.empty() || m_current_workload != 0;
             }
 
@@ -199,7 +197,7 @@ namespace facade
                     // worker_pool is not running, the worker_pool will be stopped
                     stop();
                 }
-                lock_guard lg(m_queue_mutex);
+                t_lock_guard lg(m_queue_mutex);
                 t_task_queue empty;
                 std::swap(m_task_queue, empty);
             }
