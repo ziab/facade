@@ -4,36 +4,33 @@
 
 #include <gtest/gtest.h>
 
-namespace utils
-{
+namespace utils {
     void print_json(const std::filesystem::path& path)
     {
-        std::ifstream ifs{ path };
-        while (ifs.good())
-        {
+        std::ifstream ifs{path};
+        while (ifs.good()) {
             char c;
             ifs.read(&c, 1);
             std::cout << c;
         }
         std::cout << std::endl;
     }
-}
+}  // namespace utils
 
-namespace test_classes
-{
+namespace test_classes {
     class foo
     {
     public:
         using t_input_output_function_cbk = void(bool param1, int param2);
 
     private:
-        const bool expected_param1{ true };
-        const int expected_param2{ 42 };
+        const bool expected_param1{true};
+        const int expected_param2{42};
 
-        std::function<t_input_output_function_cbk> m_input_output_function_cbk{ nullptr };
+        std::function<t_input_output_function_cbk> m_input_output_function_cbk{nullptr};
 
     public:
-        foo() {};
+        foo(){};
 
         void no_input_no_return_function() {}
         int no_input_function() { return 100500; }
@@ -53,11 +50,12 @@ namespace test_classes
         template <typename T1, typename T2>
         std::string template_function(T1 t1, T2 t2)
         {
-            return std::string{ "template_function: " }
-                + typeid(t1).name() + " " + typeid(t2).name();
+            return std::string{"template_function: "} + typeid(t1).name() + " " +
+                   typeid(t2).name();
         }
 
-        void register_input_output_function_cbk(const std::function<t_input_output_function_cbk>& cbk)
+        void register_input_output_function_cbk(
+            const std::function<t_input_output_function_cbk>& cbk)
         {
             m_input_output_function_cbk = cbk;
         }
@@ -74,10 +72,11 @@ namespace test_classes
         FACADE_METHOD(template_function);
         FACADE_CALLBACK(input_output_function_cbk, void, bool, int);
     };
-}
+}  // namespace test_classes
 
-#define do_compare_results(A, B, method, ...)\
-    ASSERT_EQ(A.method(__VA_ARGS__), B.method(__VA_ARGS__)) << #method" result mismatched";\
+#define do_compare_results(A, B, method, ...)               \
+    ASSERT_EQ(A.method(__VA_ARGS__), B.method(__VA_ARGS__)) \
+        << #method " result mismatched";
 
 void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& original)
 {
@@ -85,11 +84,13 @@ void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& ori
     do_compare_results(facade, original, const_no_input_function);
 
     std::string a_string, b_string;
-    ASSERT_EQ(facade.input_output_function(false, 3, a_string), original.input_output_function(false, 3, b_string));
+    ASSERT_EQ(facade.input_output_function(false, 3, a_string),
+        original.input_output_function(false, 3, b_string));
     ASSERT_EQ(a_string, b_string);
     a_string.clear();
     b_string.clear();
-    ASSERT_EQ(facade.input_output_function(true, 42, a_string), original.input_output_function(true, 42, b_string));
+    ASSERT_EQ(facade.input_output_function(true, 42, a_string),
+        original.input_output_function(true, 42, b_string));
     ASSERT_EQ(a_string, b_string);
     a_string.clear();
     b_string.clear();
@@ -113,12 +114,12 @@ TEST(basic, compare_results)
     {
         // Compare recording facade with the original implementation
         auto impl = std::make_unique<foo>();
-        foo_facade facade{ std::move(impl), true };
+        foo_facade facade{std::move(impl), true};
 
-        facade.rewire_callbacks([](foo & impl, foo_facade & facade)
-        {
+        facade.rewire_callbacks([](foo& impl, foo_facade& facade) {
             facade.register_callback_input_output_function_cbk(foo_callback);
-            impl.register_input_output_function_cbk(facade.get_callback_input_output_function_cbk());
+            impl.register_input_output_function_cbk(
+                facade.get_callback_input_output_function_cbk());
         });
 
         test_classes::foo original;
@@ -128,7 +129,7 @@ TEST(basic, compare_results)
     }
     {
         // Compare replaying facade with the original implementation
-        test_classes::foo_facade facade{ "calls.json" };
+        test_classes::foo_facade facade{"calls.json"};
         test_classes::foo original;
         compare_foo_result(facade, original);
         test_exceptions(facade);
