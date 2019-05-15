@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿#ifndef FACADE_H
+#define FACADE_H
+#pragma once
 #include <any>
 #include <atomic>
 #include <chrono>
@@ -71,7 +73,7 @@ public:                                                                         
         : facade(#_NAME, std::move(ptr), record)                              \
     {                                                                         \
     }                                                                         \
-    _NAME(const std::filesystem::path& file) : facade(#_NAME, file) {}        \
+    _NAME() : facade(#_NAME) {}                                               \
     void rewire_callbacks(const t_callback_initializer& rewire)               \
     {                                                                         \
         rewire(*m_impl, *this);                                               \
@@ -81,7 +83,6 @@ namespace facade
 {
     struct function_call;
     struct function_result;
-    class master;
 }  // namespace facade
 
 namespace cereal
@@ -192,7 +193,7 @@ namespace facade
         return t_hasher{}.absorb(data).hexdigest();
     }
 
-    class facade_base
+    class facade_base : public facade_interface
     {
     protected:
         // clang-format off
@@ -209,7 +210,7 @@ namespace facade
             std::function<void(const function_call&)>> m_callback_invokers;
 
         std::mutex m_mtx;
-        std::string m_name;
+        const std::string m_name;
 
         const bool m_playing{ false };
         const bool m_recording{ false };
@@ -219,8 +220,9 @@ namespace facade
         using t_method_record_inserter = void(const std::string& method_name,
             std::string& pre_args, function_result&& result);
 
-        void load(const std::filesystem::path& file)
+        void facade_load(const std::filesystem::path& file) override
         {
+            t_lock_guard lg(m_mtx);
             std::ifstream ifs(file);
             if (!ifs.good()) {
                 throw std::runtime_error{
@@ -236,8 +238,8 @@ namespace facade
                     m_name};
             }
 
-            archive(cereal::make_nvp("calls", m_calls));
-            archive(cereal::make_nvp("callbacks", m_callbacks));
+            archive(cereal::make_nvp("calls", m_calls),
+                cereal::make_nvp("callbacks", m_callbacks));
         }
 
         bool is_passing_through() const { return !m_playing && !m_recording; }
@@ -253,15 +255,16 @@ namespace facade
             initialize();
         }
 
-        facade_base(std::string name, const std::filesystem::path& file)
+        facade_base(std::string name)
             : m_name(std::move(name)), m_playing(true)
         {
             initialize();
-            load(file);
         }
 
     public:
-        void write_calls(const std::filesystem::path& path)
+        const std::string& facade_name() const override { return m_name; }
+
+        void facade_save(const std::filesystem::path& path) override
         {
             t_lock_guard lg(m_mtx);
             std::ofstream ofs(path);
@@ -269,8 +272,6 @@ namespace facade
             archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls),
                 cereal::make_nvp("callbacks", m_callbacks));
         }
-
-        const std::string& name() const { return m_name; }
 
         ~facade_base()
         {
@@ -469,9 +470,8 @@ namespace facade
         {
         }
 
-        facade(std::string name, const std::filesystem::path& file)
-            : facade_base(std::move(name), file)
-        {
-        }
+        facade(std::string name) : facade_base(std::move(name)) {}
     };
 }  // namespace facade
+
+#endif
