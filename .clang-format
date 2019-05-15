@@ -1,0 +1,23 @@
+﻿---
+BasedOnStyle: Google
+AccessModifierOffset: '-4'
+AlignAfterOpenBracket: DontAlign
+AllowAllParametersOfDeclarationOnNextLine: 'true'
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: 'true'
+AllowShortIfStatementsOnASingleLine: 'true'
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: true
+  AfterStruct: true
+  AfterEnum: true
+  AfterUnion: true
+ColumnLimit: '90'
+IndentWidth: '4'
+NamespaceIndentation: All
+TabWidth: '4'
+UseTab: Never
+PenaltyBreakBeforeFirstCallParameter: '10'
+
+...
