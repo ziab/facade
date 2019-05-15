@@ -15,6 +15,7 @@
 #include <tuple>
 
 #include "utils.h"
+#include "master.h"
 
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
@@ -211,7 +212,6 @@ namespace facade
 
         const bool m_playing{ false };
         const bool m_recording{ false };
-    public:
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_method_record_inserter = void(
@@ -239,26 +239,47 @@ namespace facade
             archive(cereal::make_nvp("callbacks", m_callbacks));
         }
 
+        bool is_passing_through() const { return !m_playing && !m_recording; }
+
+        void initialize()
+        {
+            if (!is_passing_through()) {
+                master::get_instance().register_facade(this);
+            }
+        }
+
         facade_base(std::string name, bool recording) : 
             m_name(std::move(name)), 
-            m_recording(recording) {}
+            m_recording(recording) 
+        {
+            initialize();
+        }
 
         facade_base(std::string name, const std::filesystem::path& file) :
             m_name(std::move(name)),
             m_playing(true)
         {
+            initialize();
             load(file);
         }
 
+    public:
         void write_calls(const std::filesystem::path& path)
         {
             t_lock_guard lg(m_mtx);
             std::ofstream ofs(path);
             t_cereal_output_archive archive{ ofs };
             archive(
-                cereal::make_nvp("name", m_name), 
-                cereal::make_nvp("calls", m_calls), 
+                cereal::make_nvp("name", m_name),
+                cereal::make_nvp("calls", m_calls),
                 cereal::make_nvp("callbacks", m_callbacks));
+        }
+
+        ~facade_base()
+        {
+            if (!is_passing_through()) {
+                master::get_instance().unregister_facade(this);
+            }
         }
     };
 
@@ -450,7 +471,6 @@ namespace facade
                     args...);
             };
         }
-
 
     public:
         using t_impl_type = t_type;
