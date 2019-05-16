@@ -81,15 +81,14 @@ namespace example
     void run()
     {
         {
+            facade::master().start_recording();
             auto net_impl = std::make_unique<network_interface>();
-            network_interface_facade net{std::move(net_impl), true};
+            network_interface_facade net{std::move(net_impl)};
             use_network(net);
-            facade::master().save_recordings();
         }
         {
-            utils::print_json("network_interface.json");
+            facade::master().start_playing();
             network_interface_facade net;
-            facade::master().load_recordings();
             use_network(net);
         }
     }

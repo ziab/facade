@@ -18,6 +18,7 @@ namespace facade
         // methods in the original class implementation
         virtual void facade_save(const std::filesystem::path& path) = 0;
         virtual void facade_load(const std::filesystem::path& path) = 0;
+        virtual void facade_clear() = 0;
         virtual const std::string& facade_name() const = 0;
     };
 
@@ -26,25 +27,69 @@ namespace facade
         std::set<facade_interface*> m_facades;
         utils::worker_pool m_pool{1};
         std::mutex m_mtx;
+        std::filesystem::path m_recording_dir;
+        std::string m_recording_file_extention;
+
+        bool m_playing{false};
+        bool m_recording{false};
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
+
+        void initialize(facade_interface& facade)
+        {
+            if (is_playing()) { facade.facade_load(make_recording_path(facade)); }
+        }
+
+        void finalize(facade_interface& facade)
+        {
+            if (is_recording()) { facade.facade_save(make_recording_path(facade)); }
+        }
 
     protected:
         void register_facade(facade_interface* facade)
         {
+            initialize(*facade);
             t_lock_guard lg{m_mtx};
             m_facades.insert(facade);
         }
         void unregister_facade(facade_interface* facade)
         {
-            t_lock_guard lg{m_mtx};
-            m_facades.erase(facade);
+            {
+                t_lock_guard lg{m_mtx};
+                m_facades.erase(facade);
+            }
+            finalize(*facade);
         }
 
         master() {}
 
+        void save_recordings()
+        {
+            t_lock_guard lg{m_mtx};
+            for (auto* facade : m_facades) {
+                facade->facade_save(make_recording_path(*facade));
+            }
+        }
+
+        void unprotected_load_recordings()
+        {
+            for (auto* facade : m_facades) {
+                facade->facade_load(make_recording_path(*facade));
+            }
+        }
+
     public:
         friend class facade_base;
+
+        bool is_playing() const { return m_playing; }
+        bool is_recording() const { return m_recording; }
+        bool is_passing_through() const { return !m_playing && !m_recording; }
+
+        std::filesystem::path make_recording_path(const facade_interface& facade)
+        {
+            return std::filesystem::path{m_recording_dir} /
+                (facade.facade_name() + m_recording_file_extention);
+        }
 
         static master& get_instance()
         {
@@ -53,26 +98,26 @@ namespace facade
             return *m_instance;
         }
 
-        void save_recordings(
+        master& set_recording_directory(
             const std::string& directory = ".", const std::string& extention = ".json")
         {
             t_lock_guard lg{m_mtx};
-            for (auto* facade : m_facades) {
-                std::filesystem::path path = std::filesystem::path{directory} /
-                    (facade->facade_name() + extention);
-                facade->facade_save(path);
-            }
+            m_recording_dir = directory;
+            m_recording_file_extention = extention;
+            return *this;
         }
 
-        void load_recordings(
-            const std::string& directory = ".", const std::string& extention = ".json")
+        void start_recording()
         {
             t_lock_guard lg{m_mtx};
-            for (auto* facade : m_facades) {
-                std::filesystem::path path = std::filesystem::path{directory} /
-                    (facade->facade_name() + extention);
-                facade->facade_load(path);
-            }
+            m_recording = true;
+        }
+
+        void start_playing()
+        {
+            t_lock_guard lg{m_mtx};
+            m_playing = true;
+            unprotected_load_recordings();
         }
     };
 

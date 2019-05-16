@@ -38,6 +38,7 @@
         return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
     }
 
+// TODO : improve this, callback invokers should be added on construction
 #define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
 public:                                                                             \
     using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                    \
@@ -48,6 +49,7 @@ private:                                                                        
 public:                                                                             \
     void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)                   \
     {                                                                               \
+        t_lock_guard lg(m_mtx);                                                     \
         m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) { \
             invoke_##_NAME(call);                                                   \
         };                                                                          \
@@ -67,16 +69,13 @@ public:                                                                         
         std::apply(m_cbk_func_##_NAME, args);                                       \
     }
 
-#define FACADE_CONSTRUCTOR(_NAME)                                             \
-    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>; \
-    _NAME(std::unique_ptr<t_impl_type> ptr, bool record)                      \
-        : facade(#_NAME, std::move(ptr), record)                              \
-    {                                                                         \
-    }                                                                         \
-    _NAME() : facade(#_NAME) {}                                               \
-    void rewire_callbacks(const t_callback_initializer& rewire)               \
-    {                                                                         \
-        rewire(*m_impl, *this);                                               \
+#define FACADE_CONSTRUCTOR(_NAME)                                               \
+    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;   \
+    _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, std::move(ptr)) {} \
+    _NAME() : facade(#_NAME) {}                                                 \
+    void rewire_callbacks(const t_callback_initializer& rewire)                 \
+    {                                                                           \
+        rewire(*m_impl, *this);                                                 \
     }
 
 namespace facade
@@ -211,14 +210,22 @@ namespace facade
 
         std::mutex m_mtx;
         const std::string m_name;
-
-        const bool m_playing{ false };
-        const bool m_recording{ false };
         // clang-format on
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_method_record_inserter = void(const std::string& method_name,
             std::string& pre_args, function_result&& result);
+
+        bool is_playing() const { return master().is_playing(); }
+        bool is_recording() const { return master().is_recording(); }
+        bool is_passing_through() const { return master().is_passing_through(); }
+
+        void facade_clear() override
+        {
+            t_lock_guard lg(m_mtx);
+            m_calls.clear();
+            m_callbacks.clear();
+        }
 
         void facade_load(const std::filesystem::path& file) override
         {
@@ -242,24 +249,12 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        bool is_passing_through() const { return !m_playing && !m_recording; }
-
         void initialize()
         {
             if (!is_passing_through()) { master::get_instance().register_facade(this); }
         }
 
-        facade_base(std::string name, bool recording)
-            : m_name(std::move(name)), m_recording(recording)
-        {
-            initialize();
-        }
-
-        facade_base(std::string name)
-            : m_name(std::move(name)), m_playing(true)
-        {
-            initialize();
-        }
+        facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
 
     public:
         const std::string& facade_name() const override { return m_name; }
@@ -382,6 +377,10 @@ namespace facade
             const std::function<t_method_record_inserter>& inserter,
             t_actual_args&&... args)
         {
+            if (!m_impl) {
+                throw std::runtime_error{
+                    std::string{"implementation is not set for "} + facade_name()};
+            }
             std::string pre_args;
             record_args(pre_args, std::forward<t_actual_args>(args)...);
             function_result this_call_result;
@@ -405,6 +404,15 @@ namespace facade
         typename std::decay<t_ret>::type pass_through(
             t_method&& method, const std::string& method_name, t_actual_args&&... args)
         {
+            if (!m_impl) {
+                // if facade doesn't hold an implementation then just return
+                constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+                if constexpr (has_return) {
+                    return {};
+                } else {
+                    return;
+                }
+            }
             return method(std::forward<t_actual_args>(args)...);
         }
 
@@ -412,11 +420,11 @@ namespace facade
         typename std::decay<t_ret>::type call_method(
             t_method&& method, const std::string& method_name, t_actual_args&&... args)
         {
-            if (m_playing) {
+            if (is_playing()) {
                 return replay_function_call<t_ret>(
                     method, method_name, std::forward<t_actual_args>(args)...);
             }
-            if (m_recording) {
+            if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
                                     std::string& pre_args,
                                     function_result&& result) -> void {
@@ -434,12 +442,12 @@ namespace facade
         typename std::decay<t_ret>::type call_callback(
             t_method&& method, const std::string& method_name, t_actual_args&&... args)
         {
-            if (m_playing) {
+            if (is_playing()) {
                 throw std::runtime_error(
                     "call_callback is not expected to be called during m_playing == "
                     "true");
             }
-            if (m_recording) {
+            if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
                                     std::string& pre_args,
                                     function_result&& result) -> void {
@@ -465,8 +473,8 @@ namespace facade
         using t_impl_type = t_type;
         using t_const_impl_type = typename std::add_const<t_type>::type;
 
-        facade(std::string name, std::unique_ptr<t_type>&& ptr, bool record)
-            : facade_base(std::move(name), record), m_impl(std::move(ptr))
+        facade(std::string name, std::unique_ptr<t_type>&& ptr)
+            : facade_base(std::move(name)), m_impl(std::move(ptr))
         {
         }
 
