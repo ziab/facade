@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <memory>
 #include <set>
+#include <chrono>
 
 #include "worker_pool.h"
 
@@ -31,13 +32,14 @@ namespace facade
 
     class master
     {
+        std::mutex m_mtx;
         std::set<facade_interface*> m_facades;
         utils::worker_pool m_pool{1};
-        std::mutex m_mtx;
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
+        std::chrono::time_point<std::chrono::high_resolution_clock> m_origin;
 
-        facade_mode m_mode;
+        facade_mode m_mode{facade_mode::passthrough};
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
 
