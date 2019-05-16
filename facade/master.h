@@ -22,6 +22,13 @@ namespace facade
         virtual const std::string& facade_name() const = 0;
     };
 
+    enum class facade_mode
+    {
+        passthrough = 0,
+        recording,
+        playing,
+    };
+
     class master
     {
         std::set<facade_interface*> m_facades;
@@ -30,8 +37,7 @@ namespace facade
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
 
-        bool m_playing{false};
-        bool m_recording{false};
+        facade_mode m_mode;
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
 
@@ -63,17 +69,18 @@ namespace facade
 
         master() {}
 
-        void save_recordings()
+        void unprotected_save_recordings()
         {
-            t_lock_guard lg{m_mtx};
             for (auto* facade : m_facades) {
                 facade->facade_save(make_recording_path(*facade));
+                facade->facade_clear();
             }
         }
 
         void unprotected_load_recordings()
         {
             for (auto* facade : m_facades) {
+                facade->facade_clear();
                 facade->facade_load(make_recording_path(*facade));
             }
         }
@@ -81,9 +88,9 @@ namespace facade
     public:
         friend class facade_base;
 
-        bool is_playing() const { return m_playing; }
-        bool is_recording() const { return m_recording; }
-        bool is_passing_through() const { return !m_playing && !m_recording; }
+        bool is_passing_through() const { return m_mode == facade_mode::passthrough; }
+        bool is_playing() const { return m_mode == facade_mode::playing; }
+        bool is_recording() const { return m_mode == facade_mode::recording; }
 
         std::filesystem::path make_recording_path(const facade_interface& facade)
         {
@@ -110,14 +117,21 @@ namespace facade
         void start_recording()
         {
             t_lock_guard lg{m_mtx};
-            m_recording = true;
+            m_mode = facade_mode::recording;
         }
 
         void start_playing()
         {
             t_lock_guard lg{m_mtx};
-            m_playing = true;
+            m_mode = facade_mode::playing;
             unprotected_load_recordings();
+        }
+
+        void stop()
+        {
+            t_lock_guard lg{m_mtx};
+            if (is_recording()) unprotected_save_recordings();
+            m_mode = facade_mode::passthrough;
         }
     };
 

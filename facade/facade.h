@@ -231,7 +231,7 @@ namespace facade
         {
             t_lock_guard lg(m_mtx);
             std::ifstream ifs(file);
-            if (!ifs.good()) {
+            if (!ifs.is_open()) {
                 throw std::runtime_error{
                     std::string{"failed to load a recording: "} + file.string()};
             }
@@ -251,7 +251,7 @@ namespace facade
 
         void initialize()
         {
-            if (!is_passing_through()) { master::get_instance().register_facade(this); }
+            master().register_facade(this);
         }
 
         facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
@@ -270,7 +270,7 @@ namespace facade
 
         ~facade_base()
         {
-            if (!is_passing_through()) { master::get_instance().unregister_facade(this); }
+            master().unregister_facade(this);
         }
     };
 
