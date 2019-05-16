@@ -4,7 +4,8 @@
 
 #include <gtest/gtest.h>
 
-namespace utils {
+namespace utils
+{
     void print_json(const std::filesystem::path& path)
     {
         std::ifstream ifs{path};
@@ -15,9 +16,19 @@ namespace utils {
         }
         std::cout << std::endl;
     }
+
+    template <typename t_facade>
+    void delete_recording()
+    {
+        t_facade facade;
+        const auto facade_recording_file = facade::master().make_recording_path(facade);
+        std::error_code ec;
+        std::filesystem::remove(facade_recording_file, ec);
+    }
 }  // namespace utils
 
-namespace test_classes {
+namespace test_classes
+{
     class foo
     {
     public:
@@ -51,7 +62,7 @@ namespace test_classes {
         std::string template_function(T1 t1, T2 t2)
         {
             return std::string{"template_function: "} + typeid(t1).name() + " " +
-                   typeid(t2).name();
+                typeid(t2).name();
         }
 
         void register_input_output_function_cbk(
@@ -112,9 +123,11 @@ TEST(basic, compare_results)
 {
     using namespace test_classes;
     {
+        utils::delete_recording<foo_facade>();
+        facade::master().start_recording();
         // Compare recording facade with the original implementation
         auto impl = std::make_unique<foo>();
-        foo_facade facade{std::move(impl), true};
+        foo_facade facade{std::move(impl)};
 
         facade.rewire_callbacks([](foo& impl, foo_facade& facade) {
             facade.register_callback_input_output_function_cbk(foo_callback);
@@ -124,13 +137,13 @@ TEST(basic, compare_results)
 
         test_classes::foo original;
         compare_foo_result(facade, original);
-        facade.write_calls("calls.json");
-        utils::print_json("calls.json");
     }
     {
         // Compare replaying facade with the original implementation
-        test_classes::foo_facade facade{"calls.json"};
+        facade::master().start_playing();
+        test_classes::foo_facade facade;
         test_classes::foo original;
+        utils::print_json(facade::master().make_recording_path(facade));
         compare_foo_result(facade, original);
         test_exceptions(facade);
     }
