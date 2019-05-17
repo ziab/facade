@@ -127,6 +127,7 @@ namespace facade
             for (const auto& cbk : callbacks) {
                 scheduled_callback_entry entry{cbk, facade};
                 m_callbacks.insert(entry);
+
             }
         }
 
