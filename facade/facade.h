@@ -111,44 +111,6 @@ namespace facade
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
 
-    enum class result_selection
-    {
-        once = 1,
-        cycle
-    };
-
-    struct function_result
-    {
-        std::string post_args;
-        std::string ret;
-        uint64_t offest_since_epoch;
-        uint64_t duration;  // std::chrono::microseconds
-    };
-
-    struct function_call
-    {
-        std::string name;
-        std::string pre_args;
-        std::vector<function_result> results;
-        mutable size_t current_result{0};
-
-        const auto& get_next_result(const result_selection selection) const
-        {
-            if (results.empty()) throw std::logic_error{"results can't be empty"};
-            if (current_result >= results.size()) {
-                if (selection == result_selection::once) {
-                    throw std::logic_error{
-                        "method results are exceeded for" /*put name here*/};
-                } else if (selection == result_selection::cycle) {
-                    current_result = 0;
-                }
-            }
-            return results[current_result++];
-        }
-
-        auto get_first_offset() const { return results.at(0).offest_since_epoch; }
-    };
-
     template <typename t_archive>
     struct arg_unpacker
     {
@@ -220,13 +182,6 @@ namespace facade
         bool is_recording() const { return master().is_recording(); }
         bool is_passing_through() const { return master().is_passing_through(); }
 
-        void facade_clear() override
-        {
-            t_lock_guard lg(m_mtx);
-            m_calls.clear();
-            m_callbacks.clear();
-        }
-
         void facade_load(const std::filesystem::path& file) override
         {
             t_lock_guard lg(m_mtx);
@@ -249,10 +204,19 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        void initialize()
+        void facade_clear() override
         {
-            master().register_facade(this);
+            t_lock_guard lg(m_mtx);
+            m_calls.clear();
+            m_callbacks.clear();
         }
+
+        const std::list<function_call>& get_callbacks() const override
+        {
+            return m_callbacks;
+        }
+
+        void initialize() { master().register_facade(this); }
 
         facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
 
@@ -268,10 +232,7 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        ~facade_base()
-        {
-            master().unregister_facade(this);
-        }
+        ~facade_base() { master().unregister_facade(this); }
     };
 
     template <typename t_type>
