@@ -6,8 +6,8 @@
 #include <memory>
 #include <set>
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
 
 #include "worker_pool.h"
 
@@ -127,7 +127,6 @@ namespace facade
             for (const auto& cbk : callbacks) {
                 scheduled_callback_entry entry{cbk, facade};
                 m_callbacks.insert(entry);
-
             }
         }
 

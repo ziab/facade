@@ -2,7 +2,6 @@
 #define FACADE_H
 #pragma once
 #include <any>
-#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -11,7 +10,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -217,7 +215,7 @@ namespace facade
             return m_callbacks;
         }
 
-        virtual void invoke_callback(const function_call& callback) override 
+        virtual void invoke_callback(const function_call& callback) override
         {
             const auto it = m_callback_invokers.find(callback.name);
             // callback invoker for this callback is not found
