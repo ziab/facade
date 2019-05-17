@@ -38,7 +38,7 @@
         return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
     }
 
-// TODO : improve this, callback invokers should be added on construction
+// TODO : improve this, callback invokers should (probably) be added on construction
 #define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
 public:                                                                             \
     using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                    \
@@ -172,6 +172,7 @@ namespace facade
 
         std::mutex m_mtx;
         const std::string m_name;
+        result_selection m_selection{result_selection::cycle};
         // clang-format on
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
@@ -216,6 +217,16 @@ namespace facade
             return m_callbacks;
         }
 
+        virtual void invoke_callback(const function_call& callback) override 
+        {
+            const auto it = m_callback_invokers.find(callback.name);
+            // callback invoker for this callback is not found
+            // TODO: should probably warn the client about that
+            if (it == m_callback_invokers.end()) return;
+
+            m_callback_invokers[callback.name](callback);
+        }
+
         void initialize() { master().register_facade(this); }
 
         facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
@@ -240,7 +251,6 @@ namespace facade
     {
     protected:
         std::unique_ptr<t_type> m_impl;
-        result_selection m_selection{result_selection::cycle};
 
         template <typename... t_args>
         void record_args(std::string& recorded, t_args&&... args)

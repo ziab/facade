@@ -7,11 +7,13 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <thread>
 
 #include "worker_pool.h"
 
 namespace facade
 {
+    using namespace std::chrono_literals;
     enum class result_selection
     {
         once = 1,
@@ -62,6 +64,7 @@ namespace facade
         virtual void facade_clear() = 0;
         virtual const std::string& facade_name() const = 0;
         virtual const std::list<function_call>& get_callbacks() const = 0;
+        virtual void invoke_callback(const function_call& callback) = 0;
     };
 
     enum class facade_mode
@@ -86,6 +89,11 @@ namespace facade
             : offset(_cbk.get_first_offset()), call(_cbk), facade(_facade)
         {
         }
+
+        scheduled_callback_entry(const scheduled_callback_entry& that)
+            : offset(that.offset), call(that.call), facade(that.facade)
+        {
+        }
     };
 
     class master
@@ -96,8 +104,8 @@ namespace facade
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
         std::chrono::time_point<std::chrono::high_resolution_clock> m_origin;
-
-        std::set<scheduled_callback_entry> m_callbacks;
+        std::multiset<scheduled_callback_entry> m_callbacks;
+        std::thread m_player_thread;
 
         facade_mode m_mode{facade_mode::passthrough};
 
@@ -119,6 +127,21 @@ namespace facade
             for (const auto& cbk : callbacks) {
                 scheduled_callback_entry entry{cbk, facade};
                 m_callbacks.insert(entry);
+            }
+        }
+
+        void player_thread_main()
+        {
+            while (m_mode == facade_mode::playing) {
+                if (!m_callbacks.empty()) {
+                    t_lock_guard lg{m_mtx};
+                    const auto it = m_callbacks.begin();
+                    auto callback_entry{*it};
+                    m_callbacks.erase(it);
+                    callback_entry.facade.invoke_callback(callback_entry.call);
+                } else {
+                    std::this_thread::sleep_for(10ms);
+                }
             }
         }
 
@@ -199,14 +222,20 @@ namespace facade
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::playing;
             unprotected_load_recordings();
+            m_pool.start();
+            m_player_thread = std::thread{[this]() { player_thread_main(); }};
         }
 
         void stop()
         {
             t_lock_guard lg{m_mtx};
+            m_pool.stop();
             if (is_recording()) unprotected_save_recordings();
             m_mode = facade_mode::passthrough;
+            if (m_player_thread.joinable()) m_player_thread.join();
         }
+
+        ~master() { stop(); }
     };
 
     inline ::facade::master& master() { return ::facade::master::get_instance(); }
