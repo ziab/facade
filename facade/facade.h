@@ -61,6 +61,7 @@ public:                                                                         
     }                                                                               \
     void invoke_##_NAME(const ::facade::function_call& call)                        \
     {                                                                               \
+        if (!m_cbk_func_##_NAME) return;                                            \
         std::any ret;                                                               \
         std::tuple<__VA_ARGS__> args;                                               \
         ::facade::unpack_callback<_RET>(call, ret, args);                           \
@@ -142,9 +143,16 @@ namespace facade
     }
 
     template <typename t_ret, typename... t_actual_args>
-    void unpack_callback(
-        const function_call& this_call, std::any& ret, std::tuple<t_actual_args...>& args)
+    void unpack_callback(const function_call& this_call, std::any& ret,
+        std::tuple<t_actual_args...>& args_tuple)
     {
+        std::apply(
+            [&this_call](t_actual_args&... args) {
+                unpack(
+                    this_call.get_next_result(result_selection::once).post_args, 
+                    args...);
+            },
+            args_tuple);
     }
 
     std::string calculate_hash(const std::string& data)
