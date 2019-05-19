@@ -61,11 +61,9 @@ public:                                                                         
     }                                                                               \
     void invoke_##_NAME(const ::facade::function_call& call)                        \
     {                                                                               \
-        if (!m_cbk_func_##_NAME) return;                                            \
-        std::any ret;                                                               \
-        std::tuple<__VA_ARGS__> args;                                               \
-        ::facade::unpack_callback<_RET>(call, ret, args);                           \
-        std::apply(m_cbk_func_##_NAME, args);                                       \
+        auto& func = m_cbk_func_##_NAME;                                            \
+        if (!func) return;                                                          \
+        ::facade::invoke_callback<decltype(func), _RET, __VA_ARGS__>(func, call);   \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                               \
@@ -143,16 +141,37 @@ namespace facade
     }
 
     template <typename t_ret, typename... t_actual_args>
-    void unpack_callback(const function_call& this_call, std::any& ret,
+    void unpack_callback(const function_call& this_call, std::any& any_ret,
         std::tuple<t_actual_args...>& args_tuple)
     {
+        const auto& callback_result = this_call.get_next_result(result_selection::once);
         std::apply(
-            [&this_call](t_actual_args&... args) {
-                unpack(
-                    this_call.get_next_result(result_selection::once).post_args, 
-                    args...);
-            },
+            [&this_call](t_actual_args&... args) { unpack(this_call.pre_args, args...); },
             args_tuple);
+
+        constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+        if constexpr (has_return) {
+            t_ret ret;
+            unpack(callback_result.ret, ret);
+            any_ret = ret;
+        }
+    }
+
+    template <typename t_callback_function, typename t_ret, typename... t_actual_args>
+    void invoke_callback(t_callback_function& callback, const function_call& this_call)
+    {
+        std::any any_ret;
+        std::tuple<t_actual_args...> pre_args_tuple, post_args_tuple;
+
+        unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
+
+        constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+        if constexpr (has_return) {
+            t_ret ret = std::apply(callback, pre_args_tuple);
+            // TODO: [CALLBACKS] check callback post call and return values
+        } else {
+            std::apply(callback, pre_args_tuple);
+        }
     }
 
     std::string calculate_hash(const std::string& data)
