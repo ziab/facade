@@ -2,7 +2,6 @@
 #define FACADE_H
 #pragma once
 #include <any>
-#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -11,7 +10,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -38,7 +36,7 @@
         return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
     }
 
-// TODO : improve this, callback invokers should be added on construction
+// TODO : improve this, callback invokers should (probably) be added on construction
 #define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
 public:                                                                             \
     using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                    \
@@ -63,10 +61,9 @@ public:                                                                         
     }                                                                               \
     void invoke_##_NAME(const ::facade::function_call& call)                        \
     {                                                                               \
-        std::any ret;                                                               \
-        std::tuple<__VA_ARGS__> args;                                               \
-        ::facade::unpack_callback<_RET>(call, ret, args);                           \
-        std::apply(m_cbk_func_##_NAME, args);                                       \
+        auto& func = m_cbk_func_##_NAME;                                            \
+        if (!func) return;                                                          \
+        ::facade::invoke_callback<decltype(func), _RET, __VA_ARGS__>(func, call);   \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                               \
@@ -111,44 +108,6 @@ namespace facade
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
 
-    enum class result_selection
-    {
-        once = 1,
-        cycle
-    };
-
-    struct function_result
-    {
-        std::string post_args;
-        std::string ret;
-        uint64_t offest_since_epoch;
-        uint64_t duration;  // std::chrono::microseconds
-    };
-
-    struct function_call
-    {
-        std::string name;
-        std::string pre_args;
-        std::vector<function_result> results;
-        mutable size_t current_result{0};
-
-        const auto& get_next_result(const result_selection selection) const
-        {
-            if (results.empty()) throw std::logic_error{"results can't be empty"};
-            if (current_result >= results.size()) {
-                if (selection == result_selection::once) {
-                    throw std::logic_error{
-                        "method results are exceeded for" /*put name here*/};
-                } else if (selection == result_selection::cycle) {
-                    current_result = 0;
-                }
-            }
-            return results[current_result++];
-        }
-
-        auto get_first_offset() const { return results.at(0).offest_since_epoch; }
-    };
-
     template <typename t_archive>
     struct arg_unpacker
     {
@@ -182,9 +141,37 @@ namespace facade
     }
 
     template <typename t_ret, typename... t_actual_args>
-    void unpack_callback(
-        const function_call& this_call, std::any& ret, std::tuple<t_actual_args...>& args)
+    void unpack_callback(const function_call& this_call, std::any& any_ret,
+        std::tuple<t_actual_args...>& args_tuple)
     {
+        const auto& callback_result = this_call.get_next_result(result_selection::once);
+        std::apply(
+            [&this_call](t_actual_args&... args) { unpack(this_call.pre_args, args...); },
+            args_tuple);
+
+        constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+        if constexpr (has_return) {
+            t_ret ret;
+            unpack(callback_result.ret, ret);
+            any_ret = ret;
+        }
+    }
+
+    template <typename t_callback_function, typename t_ret, typename... t_actual_args>
+    void invoke_callback(t_callback_function& callback, const function_call& this_call)
+    {
+        std::any any_ret;
+        std::tuple<t_actual_args...> pre_args_tuple, post_args_tuple;
+
+        unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
+
+        constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+        if constexpr (has_return) {
+            t_ret ret = std::apply(callback, pre_args_tuple);
+            // TODO: [CALLBACKS] check callback post call and return values
+        } else {
+            std::apply(callback, pre_args_tuple);
+        }
     }
 
     std::string calculate_hash(const std::string& data)
@@ -210,6 +197,7 @@ namespace facade
 
         std::mutex m_mtx;
         const std::string m_name;
+        result_selection m_selection{result_selection::cycle};
         // clang-format on
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
@@ -219,13 +207,6 @@ namespace facade
         bool is_playing() const { return master().is_playing(); }
         bool is_recording() const { return master().is_recording(); }
         bool is_passing_through() const { return master().is_passing_through(); }
-
-        void facade_clear() override
-        {
-            t_lock_guard lg(m_mtx);
-            m_calls.clear();
-            m_callbacks.clear();
-        }
 
         void facade_load(const std::filesystem::path& file) override
         {
@@ -249,10 +230,29 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        void initialize()
+        void facade_clear() override
         {
-            master().register_facade(this);
+            t_lock_guard lg(m_mtx);
+            m_calls.clear();
+            m_callbacks.clear();
         }
+
+        const std::list<function_call>& get_callbacks() const override
+        {
+            return m_callbacks;
+        }
+
+        virtual void invoke_callback(const function_call& callback) override
+        {
+            const auto it = m_callback_invokers.find(callback.name);
+            // callback invoker for this callback is not found
+            // TODO: should probably warn the client about that
+            if (it == m_callback_invokers.end()) return;
+
+            m_callback_invokers[callback.name](callback);
+        }
+
+        void initialize() { master().register_facade(this); }
 
         facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
 
@@ -268,10 +268,7 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        ~facade_base()
-        {
-            master().unregister_facade(this);
-        }
+        ~facade_base() { master().unregister_facade(this); }
     };
 
     template <typename t_type>
@@ -279,7 +276,6 @@ namespace facade
     {
     protected:
         std::unique_ptr<t_type> m_impl;
-        result_selection m_selection{result_selection::cycle};
 
         template <typename... t_args>
         void record_args(std::string& recorded, t_args&&... args)

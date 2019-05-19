@@ -143,9 +143,12 @@ TEST(basic, compare_results)
         facade::master().start_playing();
         test_classes::foo_facade facade;
         test_classes::foo original;
-        utils::print_json(facade::master().make_recording_path(facade));
+
+        facade.register_callback_input_output_function_cbk(foo_callback);
+
         compare_foo_result(facade, original);
         test_exceptions(facade);
+        utils::print_json(facade::master().make_recording_path(facade));
     }
 }
 

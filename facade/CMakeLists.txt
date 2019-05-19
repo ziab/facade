@@ -15,4 +15,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   # using GCC
 	# can remove if gcc-9 is used
 	target_link_libraries(facade INTERFACE stdc++fs)
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+	find_package(Threads REQUIRED)
+	target_link_libraries(facade INTERFACE Threads::Threads)
 endif()
