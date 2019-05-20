@@ -14,6 +14,8 @@
 namespace facade
 {
     using namespace std::chrono_literals;
+    using t_duration_resolution = std::chrono::microseconds;
+
     enum class result_selection
     {
         once = 1,
@@ -24,7 +26,7 @@ namespace facade
     {
         std::string post_args;
         std::string ret;
-        uint64_t offest_since_epoch;
+        uint64_t offest_from_origin;
         uint64_t duration;  // std::chrono::microseconds
     };
 
@@ -49,7 +51,7 @@ namespace facade
             return results[current_result++];
         }
 
-        auto get_first_offset() const { return results.at(0).offest_since_epoch; }
+        auto get_first_offset() const { return results.at(0).offest_from_origin; }
     };
 
     // The reason this interface is need is to break circular dependency betwean the
@@ -136,7 +138,7 @@ namespace facade
                 if (!m_callbacks.empty()) {
                     t_lock_guard lg{m_mtx};
                     const auto it = m_callbacks.begin();
-                    auto callback_entry{*it};
+                    auto callback_entry{std::move(*it)};
                     m_callbacks.erase(it);
                     callback_entry.facade.invoke_callback(callback_entry.call);
                 } else {
@@ -211,10 +213,17 @@ namespace facade
             return *this;
         }
 
+        auto get_offset_from_origin() const
+        {
+            return std::chrono::duration_cast<t_duration_resolution>(
+                   std::chrono::high_resolution_clock::now() - m_origin);
+        }
+
         void start_recording()
         {
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::recording;
+            m_origin = std::chrono::high_resolution_clock::now();
         }
 
         void start_playing()
@@ -222,6 +231,7 @@ namespace facade
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::playing;
             unprotected_load_recordings();
+            m_origin = std::chrono::high_resolution_clock::now();
             m_pool.start();
             m_player_thread = std::thread{[this]() { player_thread_main(); }};
         }

@@ -96,14 +96,13 @@ namespace cereal
     {
         archive(cereal::make_nvp("post_args", result.post_args),
             cereal::make_nvp("ret", result.ret),
-            cereal::make_nvp("offest_since_epoch", result.offest_since_epoch),
+            cereal::make_nvp("offest_from_origin", result.offest_from_origin),
             cereal::make_nvp("duration", result.duration));
     }
 }  // namespace cereal
 
 namespace facade
 {
-    using t_duration_resolution = std::chrono::microseconds;
     using t_cereal_output_archive = cereal::JSONOutputArchive;
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
@@ -380,6 +379,8 @@ namespace facade
             std::string pre_args;
             record_args(pre_args, std::forward<t_actual_args>(args)...);
             function_result this_call_result;
+            this_call_result.offest_from_origin =
+                master().get_offset_from_origin().count();
             utils::timer timer;
             std::any ret;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
