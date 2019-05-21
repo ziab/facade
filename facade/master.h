@@ -14,6 +14,8 @@
 namespace facade
 {
     using namespace std::chrono_literals;
+    using t_duration = std::chrono::microseconds;
+
     enum class result_selection
     {
         once = 1,
@@ -22,16 +24,16 @@ namespace facade
 
     struct function_result
     {
-        std::string post_args;
-        std::string ret;
-        uint64_t offest_since_epoch;
-        uint64_t duration;  // std::chrono::microseconds
+        std::string post_call_args;
+        std::string return_value;
+        t_duration offest_from_origin;
+        t_duration duration;
     };
 
     struct function_call
     {
-        std::string name;
-        std::string pre_args;
+        std::string function_name;
+        std::string pre_call_args;
         std::vector<function_result> results;
         mutable size_t current_result{0};
 
@@ -41,7 +43,7 @@ namespace facade
             if (current_result >= results.size()) {
                 if (selection == result_selection::once) {
                     throw std::logic_error{
-                        "method results are exceeded for" /*put name here*/};
+                        "method results are exceeded for " + function_name};
                 } else if (selection == result_selection::cycle) {
                     current_result = 0;
                 }
@@ -49,10 +51,10 @@ namespace facade
             return results[current_result++];
         }
 
-        auto get_first_offset() const { return results.at(0).offest_since_epoch; }
+        auto get_first_offset() const { return results.at(0).offest_from_origin; }
     };
 
-    // The reason this interface is need is to break circular dependency betwean the
+    // The reason this interface is needed is to break circular dependency between the
     // master and facade(facade_base)
     class facade_interface
     {
@@ -76,7 +78,7 @@ namespace facade
 
     struct scheduled_callback_entry
     {
-        uint64_t offset;
+        const t_duration offset;
         const function_call& call;
         facade_interface& facade;
 
@@ -94,6 +96,8 @@ namespace facade
             : offset(that.offset), call(that.call), facade(that.facade)
         {
         }
+
+        void invoke() const { facade.invoke_callback(call); }
     };
 
     class master
@@ -136,10 +140,13 @@ namespace facade
                 if (!m_callbacks.empty()) {
                     t_lock_guard lg{m_mtx};
                     const auto it = m_callbacks.begin();
-                    auto callback_entry{*it};
+                    auto callback_entry{std::move(*it)};
                     m_callbacks.erase(it);
-                    callback_entry.facade.invoke_callback(callback_entry.call);
+                    sleep_until(callback_entry.offset);
+                    m_pool.submit([callback_entry]() { callback_entry.invoke(); });
                 } else {
+                    // this sleep is not a good solution, the thread should be notified
+                    // about new callbacks
                     std::this_thread::sleep_for(10ms);
                 }
             }
@@ -211,10 +218,25 @@ namespace facade
             return *this;
         }
 
+        auto get_offset_from_origin() const
+        {
+            return std::chrono::duration_cast<t_duration>(
+                std::chrono::high_resolution_clock::now() - m_origin);
+        }
+
+        void sleep_until(const t_duration& that_offset_form_origin) const
+        {
+            const auto this_offset = get_offset_from_origin();
+            const auto diff = that_offset_form_origin - this_offset;
+            if (diff < t_duration::zero()) return;
+            std::this_thread::sleep_for(diff);
+        }
+
         void start_recording()
         {
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::recording;
+            m_origin = std::chrono::high_resolution_clock::now();
         }
 
         void start_playing()
@@ -222,6 +244,7 @@ namespace facade
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::playing;
             unprotected_load_recordings();
+            m_origin = std::chrono::high_resolution_clock::now();
             m_pool.start();
             m_player_thread = std::thread{[this]() { player_thread_main(); }};
         }

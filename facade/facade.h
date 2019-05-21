@@ -84,26 +84,37 @@ namespace facade
 namespace cereal
 {
     template <class t_archive>
+    uint64_t save_minimal(t_archive&, const facade::t_duration& dur)
+    {
+        return dur.count();
+    }
+
+    template <class t_archive>
+    void load_minimal(t_archive&, facade::t_duration& dur, const uint64_t& value)
+    {
+        dur = facade::t_duration{value};
+    }
+
+    template <class t_archive>
     void serialize(t_archive& archive, facade::function_call& call)
     {
-        archive(cereal::make_nvp("name", call.name),
-            cereal::make_nvp("pre_args", call.pre_args),
+        archive(cereal::make_nvp("function_name", call.function_name),
+            cereal::make_nvp("pre_call_args", call.pre_call_args),
             cereal::make_nvp("results", call.results));
     }
 
     template <class t_archive>
     void serialize(t_archive& archive, facade::function_result& result)
     {
-        archive(cereal::make_nvp("post_args", result.post_args),
-            cereal::make_nvp("ret", result.ret),
-            cereal::make_nvp("offest_since_epoch", result.offest_since_epoch),
+        archive(cereal::make_nvp("post_call_args", result.post_call_args),
+            cereal::make_nvp("return_value", result.return_value),
+            cereal::make_nvp("offest_from_origin", result.offest_from_origin),
             cereal::make_nvp("duration", result.duration));
     }
 }  // namespace cereal
 
 namespace facade
 {
-    using t_duration_resolution = std::chrono::microseconds;
     using t_cereal_output_archive = cereal::JSONOutputArchive;
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
@@ -140,37 +151,38 @@ namespace facade
         utils::visit_args(unpacker, std::forward<t_args>(args)...);
     }
 
-    template <typename t_ret, typename... t_actual_args>
+    template <typename t_ret, typename... t_args>
     void unpack_callback(const function_call& this_call, std::any& any_ret,
-        std::tuple<t_actual_args...>& args_tuple)
+        std::tuple<t_args...>& args_tuple)
     {
         const auto& callback_result = this_call.get_next_result(result_selection::once);
         std::apply(
-            [&this_call](t_actual_args&... args) { unpack(this_call.pre_args, args...); },
+            [&this_call](t_args&... args) { unpack(this_call.pre_call_args, args...); },
             args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
             t_ret ret;
-            unpack(callback_result.ret, ret);
+            unpack(callback_result.return_value, ret);
             any_ret = ret;
         }
     }
 
-    template <typename t_callback_function, typename t_ret, typename... t_actual_args>
+    template <typename t_callback_function, typename t_ret, typename... t_args>
     void invoke_callback(t_callback_function& callback, const function_call& this_call)
     {
         std::any any_ret;
-        std::tuple<t_actual_args...> pre_args_tuple, post_args_tuple;
+        std::tuple<typename std::decay<t_args>::type...> pre_call_args_tuple;
+        std::tuple<typename std::decay<t_args>::type...> post_call_args_tuple;
 
-        unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
+        unpack_callback<t_ret>(this_call, any_ret, pre_call_args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
-            t_ret ret = std::apply(callback, pre_args_tuple);
+            t_ret ret = std::apply(callback, pre_call_args_tuple);
             // TODO: [CALLBACKS] check callback post call and return values
         } else {
-            std::apply(callback, pre_args_tuple);
+            std::apply(callback, pre_call_args_tuple);
         }
     }
 
@@ -202,7 +214,7 @@ namespace facade
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_method_record_inserter = void(const std::string& method_name,
-            std::string& pre_args, function_result&& result);
+            std::string& pre_call_args, function_result&& result);
 
         bool is_playing() const { return master().is_playing(); }
         bool is_recording() const { return master().is_recording(); }
@@ -210,6 +222,11 @@ namespace facade
 
         void facade_load(const std::filesystem::path& file) override
         {
+            std::error_code ec;
+            if (!std::filesystem::exists(file, ec)) {
+                throw std::runtime_error{
+                    std::string{"a recording file doesn't exist: "} + file.string()};
+            }
             t_lock_guard lg(m_mtx);
             std::ifstream ifs(file);
             if (!ifs.is_open()) {
@@ -244,12 +261,12 @@ namespace facade
 
         virtual void invoke_callback(const function_call& callback) override
         {
-            const auto it = m_callback_invokers.find(callback.name);
+            const auto it = m_callback_invokers.find(callback.function_name);
             // callback invoker for this callback is not found
             // TODO: should probably warn the client about that
             if (it == m_callback_invokers.end()) return;
 
-            m_callback_invokers[callback.name](callback);
+            m_callback_invokers[callback.function_name](callback);
         }
 
         void initialize() { master().register_facade(this); }
@@ -298,10 +315,9 @@ namespace facade
             }
         }
 
-        template <typename t_ret, typename t_method, class... t_expected_args,
-            typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type replay_function_call(
-            t_method&& method, const std::string& method_name, t_actual_args&&... args)
+            t_method&& method, const std::string& method_name, t_args&&... args)
         {
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             const auto method_it = m_calls.find(method_name);
@@ -313,7 +329,7 @@ namespace facade
                 }
             }
             std::string pre_call_args;
-            record_args(pre_call_args, std::forward<t_actual_args>(args)...);
+            record_args(pre_call_args, std::forward<t_args>(args)...);
             const auto hash = calculate_hash(pre_call_args);
             const auto& this_method_calls = method_it->second;
             const auto this_method_call_it = this_method_calls.find(hash);
@@ -326,29 +342,27 @@ namespace facade
             }
             const auto& this_method_call_result =
                 this_method_call_it->second.get_next_result(m_selection);
-            std::this_thread::sleep_for(
-                t_duration_resolution{this_method_call_result.duration});
-            unpack(
-                this_method_call_result.post_args, std::forward<t_actual_args>(args)...);
+            std::this_thread::sleep_for(t_duration{this_method_call_result.duration});
+            unpack(this_method_call_result.post_call_args, std::forward<t_args>(args)...);
             if constexpr (has_return) {
                 typename std::decay<t_ret>::type ret{};
-                unpack(this_method_call_result.ret, ret);
+                unpack(this_method_call_result.return_value, ret);
                 return ret;
             }
             if constexpr (has_return) return {};
         }
 
-        void insert_method_call(const std::string& method_name, std::string& pre_args,
-            function_result&& result)
+        void insert_method_call(const std::string& method_name,
+            std::string& pre_call_args, function_result&& result)
         {
-            const auto hash = calculate_hash(pre_args);
+            const auto hash = calculate_hash(pre_call_args);
             t_lock_guard lg(m_mtx);
             auto& method_calls = m_calls[method_name];
             auto method_call_it = method_calls.find(hash);
             if (method_call_it == method_calls.end()) {
                 function_call function_call;
-                function_call.name = method_name;
-                function_call.pre_args = std::move(pre_args);
+                function_call.function_name = method_name;
+                function_call.pre_call_args = std::move(pre_call_args);
                 method_call_it =
                     method_calls.insert({hash, std::move(function_call)}).first;
             }
@@ -356,49 +370,48 @@ namespace facade
             method_call_it->second.results.emplace_back(std::move(result));
         }
 
-        void insert_callback_call(const std::string& method_name, std::string& pre_args,
-            function_result&& result)
+        void insert_callback_call(const std::string& method_name,
+            std::string& pre_call_args, function_result&& result)
         {
             t_lock_guard lg(m_mtx);
             function_call callback_call;
-            callback_call.name = method_name;
-            callback_call.pre_args = std::move(pre_args);
+            callback_call.function_name = method_name;
+            callback_call.pre_call_args = std::move(pre_call_args);
             callback_call.results.emplace_back(std::move(result));
             m_callbacks.emplace_back(std::move(callback_call));
         }
 
-        template <typename t_ret, typename t_method, typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type call_function_and_record(t_method&& method,
             const std::string& method_name,
-            const std::function<t_method_record_inserter>& inserter,
-            t_actual_args&&... args)
+            const std::function<t_method_record_inserter>& inserter, t_args&&... args)
         {
             if (!m_impl) {
                 throw std::runtime_error{
                     std::string{"implementation is not set for "} + facade_name()};
             }
-            std::string pre_args;
-            record_args(pre_args, std::forward<t_actual_args>(args)...);
+            std::string pre_call_args;
+            record_args(pre_call_args, std::forward<t_args>(args)...);
             function_result this_call_result;
+            this_call_result.offest_from_origin = master().get_offset_from_origin();
             utils::timer timer;
             std::any ret;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
-                ret = method(std::forward<t_actual_args>(args)...);
-                record_args(this_call_result.ret, std::any_cast<t_ret>(ret));
+                ret = method(std::forward<t_args>(args)...);
+                record_args(this_call_result.return_value, std::any_cast<t_ret>(ret));
             } else {
-                method(std::forward<t_actual_args>(args)...);
+                method(std::forward<t_args>(args)...);
             }
-            this_call_result.duration = timer.get_duration<t_duration_resolution>();
-            record_args(this_call_result.post_args, std::forward<t_actual_args>(args)...);
-            inserter(method_name, pre_args, std::move(this_call_result));
+            this_call_result.duration = timer.get_duration<t_duration>();
+            record_args(this_call_result.post_call_args, std::forward<t_args>(args)...);
+            inserter(method_name, pre_call_args, std::move(this_call_result));
             if constexpr (has_return) { return std::any_cast<t_ret>(ret); }
         }
 
-        template <typename t_ret, typename t_method, class... t_expected_args,
-            typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type pass_through(
-            t_method&& method, const std::string& method_name, t_actual_args&&... args)
+            t_method&& method, const std::string& method_name, t_args&&... args)
         {
             if (!m_impl) {
                 // if facade doesn't hold an implementation then just return
@@ -409,34 +422,34 @@ namespace facade
                     return;
                 }
             }
-            return method(std::forward<t_actual_args>(args)...);
+            return method(std::forward<t_args>(args)...);
         }
 
-        template <typename t_ret, typename t_method, typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type call_method(
-            t_method&& method, const std::string& method_name, t_actual_args&&... args)
+            t_method&& method, const std::string& method_name, t_args&&... args)
         {
             if (is_playing()) {
                 return replay_function_call<t_ret>(
-                    method, method_name, std::forward<t_actual_args>(args)...);
+                    method, method_name, std::forward<t_args>(args)...);
             }
             if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
-                                    std::string& pre_args,
+                                    std::string& pre_call_args,
                                     function_result&& result) -> void {
-                    insert_method_call(method_name, pre_args, std::move(result));
+                    insert_method_call(method_name, pre_call_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
-                    method, method_name, inserter, std::forward<t_actual_args>(args)...);
+                    method, method_name, inserter, std::forward<t_args>(args)...);
             } else {
                 return pass_through<t_ret>(
-                    method, method_name, std::forward<t_actual_args>(args)...);
+                    method, method_name, std::forward<t_args>(args)...);
             }
         }
 
-        template <typename t_ret, typename t_method, typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type call_callback(
-            t_method&& method, const std::string& method_name, t_actual_args&&... args)
+            t_method&& method, const std::string& method_name, t_args&&... args)
         {
             if (is_playing()) {
                 throw std::runtime_error(
@@ -445,22 +458,22 @@ namespace facade
             }
             if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
-                                    std::string& pre_args,
+                                    std::string& pre_call_args,
                                     function_result&& result) -> void {
-                    insert_callback_call(method_name, pre_args, std::move(result));
+                    insert_callback_call(method_name, pre_call_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
-                    method, method_name, inserter, std::forward<t_actual_args>(args)...);
+                    method, method_name, inserter, std::forward<t_args>(args)...);
             } else {
                 return pass_through<t_ret>(
-                    method, method_name, std::forward<t_actual_args>(args)...);
+                    method, method_name, std::forward<t_args>(args)...);
             }
         }
 
-        template <typename t_ret, typename t_method, typename... t_actual_args>
+        template <typename t_ret, typename t_method, typename... t_args>
         auto create_callback_wrapper(t_method method, const std::string& method_name)
         {
-            return [this, method, method_name](t_actual_args... args) -> t_ret {
+            return [this, method, method_name](t_args... args) -> t_ret {
                 return call_callback<t_ret>(method, method_name, args...);
             };
         }
