@@ -24,16 +24,16 @@ namespace facade
 
     struct function_result
     {
-        std::string post_call_args;
-        std::string return_value;
+        std::string post_args;
+        std::string ret;
         t_duration offest_from_origin;
         t_duration duration;
     };
 
     struct function_call
     {
-        std::string function_name;
-        std::string pre_call_args;
+        std::string name;
+        std::string pre_args;
         std::vector<function_result> results;
         mutable size_t current_result{0};
 
@@ -42,8 +42,7 @@ namespace facade
             if (results.empty()) throw std::logic_error{"results can't be empty"};
             if (current_result >= results.size()) {
                 if (selection == result_selection::once) {
-                    throw std::logic_error{
-                        "method results are exceeded for " + function_name};
+                    throw std::logic_error{"method results are exceeded for " + name};
                 } else if (selection == result_selection::cycle) {
                     current_result = 0;
                 }
