@@ -98,16 +98,16 @@ namespace cereal
     template <class t_archive>
     void serialize(t_archive& archive, facade::function_call& call)
     {
-        archive(cereal::make_nvp("name", call.name),
-            cereal::make_nvp("pre_args", call.pre_args),
+        archive(cereal::make_nvp("function_name", call.function_name),
+            cereal::make_nvp("pre_call_args", call.pre_call_args),
             cereal::make_nvp("results", call.results));
     }
 
     template <class t_archive>
     void serialize(t_archive& archive, facade::function_result& result)
     {
-        archive(cereal::make_nvp("post_args", result.post_args),
-            cereal::make_nvp("ret", result.ret),
+        archive(cereal::make_nvp("post_call_args", result.post_call_args),
+            cereal::make_nvp("return_value", result.return_value),
             cereal::make_nvp("offest_from_origin", result.offest_from_origin),
             cereal::make_nvp("duration", result.duration));
     }
@@ -156,13 +156,14 @@ namespace facade
         std::tuple<t_args...>& args_tuple)
     {
         const auto& callback_result = this_call.get_next_result(result_selection::once);
-        std::apply([&this_call](t_args&... args) { unpack(this_call.pre_args, args...); },
+        std::apply(
+            [&this_call](t_args&... args) { unpack(this_call.pre_call_args, args...); },
             args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
             t_ret ret;
-            unpack(callback_result.ret, ret);
+            unpack(callback_result.return_value, ret);
             any_ret = ret;
         }
     }
@@ -171,16 +172,17 @@ namespace facade
     void invoke_callback(t_callback_function& callback, const function_call& this_call)
     {
         std::any any_ret;
-        std::tuple<typename std::decay<t_args>::type...> pre_args_tuple, post_args_tuple;
+        std::tuple<typename std::decay<t_args>::type...> pre_call_args_tuple;
+        std::tuple<typename std::decay<t_args>::type...> post_call_args_tuple;
 
-        unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
+        unpack_callback<t_ret>(this_call, any_ret, pre_call_args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
-            t_ret ret = std::apply(callback, pre_args_tuple);
+            t_ret ret = std::apply(callback, pre_call_args_tuple);
             // TODO: [CALLBACKS] check callback post call and return values
         } else {
-            std::apply(callback, pre_args_tuple);
+            std::apply(callback, pre_call_args_tuple);
         }
     }
 
@@ -212,7 +214,7 @@ namespace facade
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_method_record_inserter = void(const std::string& method_name,
-            std::string& pre_args, function_result&& result);
+            std::string& pre_call_args, function_result&& result);
 
         bool is_playing() const { return master().is_playing(); }
         bool is_recording() const { return master().is_recording(); }
@@ -259,12 +261,12 @@ namespace facade
 
         virtual void invoke_callback(const function_call& callback) override
         {
-            const auto it = m_callback_invokers.find(callback.name);
+            const auto it = m_callback_invokers.find(callback.function_name);
             // callback invoker for this callback is not found
             // TODO: should probably warn the client about that
             if (it == m_callback_invokers.end()) return;
 
-            m_callback_invokers[callback.name](callback);
+            m_callback_invokers[callback.function_name](callback);
         }
 
         void initialize() { master().register_facade(this); }
@@ -341,26 +343,26 @@ namespace facade
             const auto& this_method_call_result =
                 this_method_call_it->second.get_next_result(m_selection);
             std::this_thread::sleep_for(t_duration{this_method_call_result.duration});
-            unpack(this_method_call_result.post_args, std::forward<t_args>(args)...);
+            unpack(this_method_call_result.post_call_args, std::forward<t_args>(args)...);
             if constexpr (has_return) {
                 typename std::decay<t_ret>::type ret{};
-                unpack(this_method_call_result.ret, ret);
+                unpack(this_method_call_result.return_value, ret);
                 return ret;
             }
             if constexpr (has_return) return {};
         }
 
-        void insert_method_call(const std::string& method_name, std::string& pre_args,
-            function_result&& result)
+        void insert_method_call(const std::string& method_name,
+            std::string& pre_call_args, function_result&& result)
         {
-            const auto hash = calculate_hash(pre_args);
+            const auto hash = calculate_hash(pre_call_args);
             t_lock_guard lg(m_mtx);
             auto& method_calls = m_calls[method_name];
             auto method_call_it = method_calls.find(hash);
             if (method_call_it == method_calls.end()) {
                 function_call function_call;
-                function_call.name = method_name;
-                function_call.pre_args = std::move(pre_args);
+                function_call.function_name = method_name;
+                function_call.pre_call_args = std::move(pre_call_args);
                 method_call_it =
                     method_calls.insert({hash, std::move(function_call)}).first;
             }
@@ -368,13 +370,13 @@ namespace facade
             method_call_it->second.results.emplace_back(std::move(result));
         }
 
-        void insert_callback_call(const std::string& method_name, std::string& pre_args,
-            function_result&& result)
+        void insert_callback_call(const std::string& method_name,
+            std::string& pre_call_args, function_result&& result)
         {
             t_lock_guard lg(m_mtx);
             function_call callback_call;
-            callback_call.name = method_name;
-            callback_call.pre_args = std::move(pre_args);
+            callback_call.function_name = method_name;
+            callback_call.pre_call_args = std::move(pre_call_args);
             callback_call.results.emplace_back(std::move(result));
             m_callbacks.emplace_back(std::move(callback_call));
         }
@@ -388,8 +390,8 @@ namespace facade
                 throw std::runtime_error{
                     std::string{"implementation is not set for "} + facade_name()};
             }
-            std::string pre_args;
-            record_args(pre_args, std::forward<t_args>(args)...);
+            std::string pre_call_args;
+            record_args(pre_call_args, std::forward<t_args>(args)...);
             function_result this_call_result;
             this_call_result.offest_from_origin = master().get_offset_from_origin();
             utils::timer timer;
@@ -397,13 +399,13 @@ namespace facade
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
                 ret = method(std::forward<t_args>(args)...);
-                record_args(this_call_result.ret, std::any_cast<t_ret>(ret));
+                record_args(this_call_result.return_value, std::any_cast<t_ret>(ret));
             } else {
                 method(std::forward<t_args>(args)...);
             }
             this_call_result.duration = timer.get_duration<t_duration>();
-            record_args(this_call_result.post_args, std::forward<t_args>(args)...);
-            inserter(method_name, pre_args, std::move(this_call_result));
+            record_args(this_call_result.post_call_args, std::forward<t_args>(args)...);
+            inserter(method_name, pre_call_args, std::move(this_call_result));
             if constexpr (has_return) { return std::any_cast<t_ret>(ret); }
         }
 
@@ -433,9 +435,9 @@ namespace facade
             }
             if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
-                                    std::string& pre_args,
+                                    std::string& pre_call_args,
                                     function_result&& result) -> void {
-                    insert_method_call(method_name, pre_args, std::move(result));
+                    insert_method_call(method_name, pre_call_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
                     method, method_name, inserter, std::forward<t_args>(args)...);
@@ -456,9 +458,9 @@ namespace facade
             }
             if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
-                                    std::string& pre_args,
+                                    std::string& pre_call_args,
                                     function_result&& result) -> void {
-                    insert_callback_call(method_name, pre_args, std::move(result));
+                    insert_callback_call(method_name, pre_call_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
                     method, method_name, inserter, std::forward<t_args>(args)...);
