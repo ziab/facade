@@ -171,7 +171,7 @@ namespace facade
     void invoke_callback(t_callback_function& callback, const function_call& this_call)
     {
         std::any any_ret;
-        std::tuple<t_args...> pre_args_tuple, post_args_tuple;
+        std::tuple<std::decay<t_args>::type...> pre_args_tuple, post_args_tuple;
 
         unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
 
@@ -220,6 +220,11 @@ namespace facade
 
         void facade_load(const std::filesystem::path& file) override
         {
+            std::error_code ec;
+            if (!std::filesystem::exists(file, ec)) {
+                throw std::runtime_error{
+                    std::string{"a recording file doesn't exist: "} + file.string()};
+            }
             t_lock_guard lg(m_mtx);
             std::ifstream ifs(file);
             if (!ifs.is_open()) {

@@ -42,8 +42,7 @@ namespace facade
             if (results.empty()) throw std::logic_error{"results can't be empty"};
             if (current_result >= results.size()) {
                 if (selection == result_selection::once) {
-                    throw std::logic_error{
-                        "method results are exceeded for" /*put name here*/};
+                    throw std::logic_error{"method results are exceeded for " + name};
                 } else if (selection == result_selection::cycle) {
                     current_result = 0;
                 }
