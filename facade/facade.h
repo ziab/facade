@@ -171,7 +171,7 @@ namespace facade
     void invoke_callback(t_callback_function& callback, const function_call& this_call)
     {
         std::any any_ret;
-        std::tuple<std::decay<t_args>::type...> pre_args_tuple, post_args_tuple;
+        std::tuple<typename std::decay<t_args>::type...> pre_args_tuple, post_args_tuple;
 
         unpack_callback<t_ret>(this_call, any_ret, pre_args_tuple);
 
