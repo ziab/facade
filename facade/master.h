@@ -14,7 +14,7 @@
 namespace facade
 {
     using namespace std::chrono_literals;
-    using t_duration_resolution = std::chrono::microseconds;
+    using t_duration = std::chrono::microseconds;
 
     enum class result_selection
     {
@@ -26,8 +26,8 @@ namespace facade
     {
         std::string post_args;
         std::string ret;
-        uint64_t offest_from_origin;
-        uint64_t duration;  // std::chrono::microseconds
+        t_duration offest_from_origin;
+        t_duration duration;
     };
 
     struct function_call
@@ -54,7 +54,7 @@ namespace facade
         auto get_first_offset() const { return results.at(0).offest_from_origin; }
     };
 
-    // The reason this interface is need is to break circular dependency betwean the
+    // The reason this interface is needed is to break circular dependency between the
     // master and facade(facade_base)
     class facade_interface
     {
@@ -78,7 +78,7 @@ namespace facade
 
     struct scheduled_callback_entry
     {
-        uint64_t offset;
+        const t_duration offset;
         const function_call& call;
         facade_interface& facade;
 
@@ -96,6 +96,8 @@ namespace facade
             : offset(that.offset), call(that.call), facade(that.facade)
         {
         }
+
+        void invoke() const { facade.invoke_callback(call); }
     };
 
     class master
@@ -140,10 +142,11 @@ namespace facade
                     const auto it = m_callbacks.begin();
                     auto callback_entry{std::move(*it)};
                     m_callbacks.erase(it);
-                    // TODO: sleep here until it's time to actually make the call
-                    // based on offest_from_origin
-                    callback_entry.facade.invoke_callback(callback_entry.call);
+                    sleep_until(callback_entry.offset);
+                    m_pool.submit([callback_entry]() { callback_entry.invoke(); });
                 } else {
+                    // this sleep is not a good solution, the thread should be notified
+                    // about new callbacks
                     std::this_thread::sleep_for(10ms);
                 }
             }
@@ -217,8 +220,16 @@ namespace facade
 
         auto get_offset_from_origin() const
         {
-            return std::chrono::duration_cast<t_duration_resolution>(
-                   std::chrono::high_resolution_clock::now() - m_origin);
+            return std::chrono::duration_cast<t_duration>(
+                std::chrono::high_resolution_clock::now() - m_origin);
+        }
+
+        void sleep_until(const t_duration& that_offset_form_origin) const
+        {
+            const auto this_offset = get_offset_from_origin();
+            const auto diff = that_offset_form_origin - this_offset;
+            if (diff < t_duration::zero()) return;
+            std::this_thread::sleep_for(diff);
         }
 
         void start_recording()

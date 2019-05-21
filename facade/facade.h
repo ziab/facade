@@ -84,6 +84,18 @@ namespace facade
 namespace cereal
 {
     template <class t_archive>
+    uint64_t save_minimal(t_archive&, const facade::t_duration& dur)
+    {
+        return dur.count();
+    }
+
+    template <class t_archive>
+    void load_minimal(t_archive&, facade::t_duration& dur, const uint64_t& value)
+    {
+        dur = facade::t_duration{value};
+    }
+
+    template <class t_archive>
     void serialize(t_archive& archive, facade::function_call& call)
     {
         archive(cereal::make_nvp("name", call.name),
@@ -144,8 +156,7 @@ namespace facade
         std::tuple<t_args...>& args_tuple)
     {
         const auto& callback_result = this_call.get_next_result(result_selection::once);
-        std::apply(
-            [&this_call](t_args&... args) { unpack(this_call.pre_args, args...); },
+        std::apply([&this_call](t_args&... args) { unpack(this_call.pre_args, args...); },
             args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
@@ -324,10 +335,8 @@ namespace facade
             }
             const auto& this_method_call_result =
                 this_method_call_it->second.get_next_result(m_selection);
-            std::this_thread::sleep_for(
-                t_duration_resolution{this_method_call_result.duration});
-            unpack(
-                this_method_call_result.post_args, std::forward<t_args>(args)...);
+            std::this_thread::sleep_for(t_duration{this_method_call_result.duration});
+            unpack(this_method_call_result.post_args, std::forward<t_args>(args)...);
             if constexpr (has_return) {
                 typename std::decay<t_ret>::type ret{};
                 unpack(this_method_call_result.ret, ret);
@@ -368,8 +377,7 @@ namespace facade
         template <typename t_ret, typename t_method, typename... t_args>
         typename std::decay<t_ret>::type call_function_and_record(t_method&& method,
             const std::string& method_name,
-            const std::function<t_method_record_inserter>& inserter,
-            t_args&&... args)
+            const std::function<t_method_record_inserter>& inserter, t_args&&... args)
         {
             if (!m_impl) {
                 throw std::runtime_error{
@@ -378,8 +386,7 @@ namespace facade
             std::string pre_args;
             record_args(pre_args, std::forward<t_args>(args)...);
             function_result this_call_result;
-            this_call_result.offest_from_origin =
-                master().get_offset_from_origin().count();
+            this_call_result.offest_from_origin = master().get_offset_from_origin();
             utils::timer timer;
             std::any ret;
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
@@ -389,7 +396,7 @@ namespace facade
             } else {
                 method(std::forward<t_args>(args)...);
             }
-            this_call_result.duration = timer.get_duration<t_duration_resolution>();
+            this_call_result.duration = timer.get_duration<t_duration>();
             record_args(this_call_result.post_args, std::forward<t_args>(args)...);
             inserter(method_name, pre_args, std::move(this_call_result));
             if constexpr (has_return) { return std::any_cast<t_ret>(ret); }

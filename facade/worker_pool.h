@@ -33,9 +33,6 @@ namespace facade
         {
         public:
             using t_task = std::function<void()>;
-            using t_priority = uint32_t;
-            using t_time = std::chrono::milliseconds;
-            static const t_priority max_priority = 0xffffffff;
 
         private:
             size_t m_workers_num{0};
@@ -159,7 +156,7 @@ namespace facade
                     (*deferred_task)();
                 };
 
-                const auto it = m_task_queue.push(task_performer);
+                m_task_queue.push(task_performer);
 
                 m_cv.notify_one();
                 return deferred_task->get_future();

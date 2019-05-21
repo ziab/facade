@@ -47,12 +47,10 @@ namespace facade
             timer() { m_time_started = std::chrono::system_clock::now(); }
 
             template <typename t_duration>
-            uint64_t get_duration() const
+            t_duration get_duration() const
             {
                 const auto now = std::chrono::system_clock::now();
-                const auto duration =
-                    std::chrono::duration_cast<t_duration>(now - m_time_started);
-                return duration.count();
+                return std::chrono::duration_cast<t_duration>(now - m_time_started);
             }
         };
 
