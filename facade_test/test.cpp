@@ -159,6 +159,10 @@ void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& ori
 
     do_compare_results(facade, original, template_function, 100, 500.f);
 
+    // FIXME: this is workaround needed because there is no
+    // way yo make sure all callbacks have been replayed
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     ASSERT_EQ(test_classes::g_foo_callback_times_called, 2);
     ASSERT_EQ(test_classes::g_foo_callback_2_times_called, 1);
 }
