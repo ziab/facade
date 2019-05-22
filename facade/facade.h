@@ -36,6 +36,18 @@
         return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
     }
 
+#define FACADE_STATIC_METHOD(_NAME)                                                     \
+    template <typename... t_args>                                                       \
+    auto _NAME(t_args&&... args)                                                        \
+    {                                                                                   \
+        using t_ret = decltype(t_impl_type::_NAME(args...));                            \
+        using t_method = t_ret(t_args...);                                              \
+        std::function lambda{                                                           \
+            [this](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }}; \
+        return get_facade_instance().call_method<t_ret>(                                \
+            lambda, #_NAME, std::forward<t_args>(args)...);                             \
+    }
+
 // TODO : improve this, callback invokers should (probably) be added on construction
 #define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
 public:                                                                             \
