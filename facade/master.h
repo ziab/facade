@@ -2,6 +2,7 @@
 #define MASTER_H
 #pragma once
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <memory>
 #include <set>
@@ -102,7 +103,8 @@ namespace facade
 
     class master
     {
-        std::mutex m_mtx;
+        mutable std::mutex m_mtx;
+        mutable std::condition_variable m_cv;
         std::set<facade_interface*> m_facades;
         utils::worker_pool m_pool{1};
         std::filesystem::path m_recording_dir;
@@ -114,6 +116,7 @@ namespace facade
         facade_mode m_mode{facade_mode::passthrough};
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
+        using t_unique_lock = std::unique_lock<decltype(m_mtx)>;
 
         void initialize(facade_interface& facade)
         {
@@ -136,19 +139,21 @@ namespace facade
 
         void player_thread_main()
         {
-            while (m_mode == facade_mode::playing) {
-                if (!m_callbacks.empty()) {
-                    t_lock_guard lg{m_mtx};
-                    const auto it = m_callbacks.begin();
-                    auto callback_entry{std::move(*it)};
-                    m_callbacks.erase(it);
-                    sleep_until(callback_entry.offset);
-                    m_pool.submit([callback_entry]() { callback_entry.invoke(); });
-                } else {
-                    // this sleep is not a good solution, the thread should be notified
-                    // about new callbacks
-                    std::this_thread::sleep_for(10ms);
+            while (true) {
+                t_unique_lock ulck(m_mtx);
+                while (m_callbacks.empty() && m_mode == facade_mode::playing) {
+                    m_cv.wait(ulck);
                 }
+
+                if (m_mode != facade_mode::playing) return;
+
+                const auto it = m_callbacks.begin();
+                auto callback_entry{std::move(*it)};
+                m_callbacks.erase(it);
+                sleep_until(callback_entry.offset);
+                m_pool.submit([callback_entry]() { callback_entry.invoke(); });
+
+                m_cv.notify_all();
             }
         }
 
@@ -160,6 +165,7 @@ namespace facade
                 t_lock_guard lg{m_mtx};
                 m_facades.insert(facade);
                 unprotected_register_callbacks(*facade);
+                m_cv.notify_all();
             }
         }
         void unregister_facade(facade_interface* facade)
@@ -167,6 +173,7 @@ namespace facade
             {
                 t_lock_guard lg{m_mtx};
                 m_facades.erase(facade);
+                m_cv.notify_all();
             }
             finalize(*facade);
         }
@@ -249,13 +256,28 @@ namespace facade
             m_player_thread = std::thread{[this]() { player_thread_main(); }};
         }
 
+        void wait_all_pending_callbacks_replayed() const {
+            t_unique_lock ulck(m_mtx);
+            while (!m_callbacks.empty() && m_mode == facade_mode::playing) {
+                m_cv.wait(ulck);
+            }
+            // when all pending callback entries are removed from the queue or
+            // playing has stopped we need to wait until all callback calls 
+            // that are being processed by the worker pool have completed
+            m_pool.wait_completion();
+        }
+
         void stop()
         {
-            t_lock_guard lg{m_mtx};
-            m_pool.stop();
-            if (is_recording()) unprotected_save_recordings();
-            m_mode = facade_mode::passthrough;
+            {
+                t_lock_guard lg{m_mtx};
+                m_pool.stop();
+                if (is_recording()) unprotected_save_recordings();
+                m_mode = facade_mode::passthrough;
+                m_cv.notify_all(); // notfiy that m_player_thread should stop
+            }
             if (m_player_thread.joinable()) m_player_thread.join();
+            m_cv.notify_all();  // notfiy wait_all_pending_callbacks_replayed 
         }
 
         ~master() { stop(); }
