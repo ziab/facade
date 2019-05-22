@@ -186,7 +186,7 @@ namespace facade
         }
     }
 
-    std::string calculate_hash(const std::string& data)
+    inline std::string calculate_hash(const std::string& data)
     {
         return t_hasher{}.absorb(data).hexdigest();
     }
@@ -196,7 +196,7 @@ namespace facade
     protected:
         // clang-format off
         std::unordered_map<
-            std::string, 
+            std::string,
             std::unordered_map<
                 std::string,
                 function_call>> m_calls;
