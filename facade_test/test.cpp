@@ -32,33 +32,37 @@ namespace test_classes
     class foo
     {
     public:
-        using t_input_output_function_cbk = void(bool param1, int param2);
-        using t_input_output_function_2_cbk = void(
+        using t_input_function_cbk = void(bool param1, int param2);
+        using t_input_output_function_cbk = bool(
             bool param1, int param2, std::string& output);
+        using t_no_input_function_cbk = void();
 
     private:
         const bool m_expected_param1{true};
         const int m_expected_param2{42};
 
+        std::function<t_input_function_cbk> m_input_function_cbk{nullptr};
         std::function<t_input_output_function_cbk> m_input_output_function_cbk{nullptr};
-        std::function<t_input_output_function_2_cbk> m_input_output_function_2_cbk{
-            nullptr};
+        std::function<t_no_input_function_cbk> m_no_input_function_cbk{nullptr};
 
     public:
         foo(){};
 
-        void no_input_no_return_function() {}
+        void no_input_no_return_function() 
+        {
+            if (m_no_input_function_cbk) m_no_input_function_cbk();
+        }
         int no_input_function() { return 100500; }
         std::string const_no_input_function() const { return "100500"; }
         bool input_output_function(bool param1, int param2, std::string& output)
         {
             // use callback
-            if (m_input_output_function_cbk) m_input_output_function_cbk(param1, param2);
+            if (m_input_output_function_cbk) m_input_function_cbk(param1, param2);
 
             if (param1 == m_expected_param1 && param2 == m_expected_param2) {
                 output = "There is some data";
-                if (m_input_output_function_2_cbk) {
-                    m_input_output_function_2_cbk(param1, param2, output);
+                if (m_input_output_function_cbk) {
+                    m_input_output_function_cbk(param1, param2, output);
                 }
                 return 1;
             }
@@ -72,16 +76,21 @@ namespace test_classes
                 typeid(t2).name();
         }
 
+        void register_input_function_cbk(const std::function<t_input_function_cbk>& cbk)
+        {
+            m_input_function_cbk = cbk;
+        }
+
         void register_input_output_function_cbk(
             const std::function<t_input_output_function_cbk>& cbk)
         {
             m_input_output_function_cbk = cbk;
         }
 
-        void register_input_output_function_2_cbk(
-            const std::function<t_input_output_function_2_cbk>& cbk)
+        void register_no_input_function_cbk(
+            const std::function<t_no_input_function_cbk>& cbk)
         {
-            m_input_output_function_2_cbk = cbk;
+            m_no_input_function_cbk = cbk;
         }
     };
 
@@ -94,8 +103,9 @@ namespace test_classes
         FACADE_METHOD(const_no_input_function);
         FACADE_METHOD(input_output_function);
         FACADE_METHOD(template_function);
-        FACADE_CALLBACK(input_output_function_cbk, void, bool, int);
-        FACADE_CALLBACK(input_output_function_2_cbk, void, bool, int, std::string&);
+        FACADE_CALLBACK(input_function_cbk, void, bool, int);
+        FACADE_CALLBACK(input_output_function_cbk, bool, bool, int, std::string&);
+        FACADE_CALLBACK(no_input_function_cbk, void);
     };
 
     void test_exceptions(test_classes::foo_facade& facade)
@@ -103,34 +113,46 @@ namespace test_classes
         facade.input_output_function(true, 43, std::string{});
     }
 
-    size_t g_foo_callback_times_called = 0;
+    size_t g_input_callback_times_called = 0;
 
-    void foo_callback(bool param1, int param2)
+    void input_callback(bool param1, int param2)
     {
-        ++g_foo_callback_times_called;
-        std::cout << "foo_callback is called with " << param1 << " " << param2
+        ++g_input_callback_times_called;
+        std::cout << "input_callback is called with " << param1 << " " << param2
                   << std::endl;
 
-        if (g_foo_callback_times_called == 1) {
+        if (g_input_callback_times_called == 1) {
             ASSERT_EQ(param1, false);
             ASSERT_EQ(param2, 3);
-        } else if (g_foo_callback_times_called == 2) {
+        } else if (g_input_callback_times_called == 2) {
             ASSERT_EQ(param1, true);
             ASSERT_EQ(param2, 42);
         }
     }
 
-    size_t g_foo_callback_2_times_called = 0;
+    size_t g_input_output_callback_times_called = 0;
 
-    void foo_callback_2(bool param1, int param2, std::string& output)
+    bool input_output_callback(bool param1, int param2, std::string& output)
     {
-        ++g_foo_callback_2_times_called;
-        std::cout << "foo_callback_2 is called with " << param1 << " " << param2 << " "
-                  << output << std::endl;
+        ++g_input_output_callback_times_called;
+        std::cout << "input_output_callback is called with " << param1 << " " << param2
+                  << " " << output << std::endl;
 
-        ASSERT_EQ(param1, true);
-        ASSERT_EQ(param2, 42);
-        ASSERT_EQ(output, "There is some data");
+        if (param1 != true) throw std::logic_error("input_output_callback test failed");
+        if (param2 != 42) throw std::logic_error("input_output_callback test failed");
+        if (output != "There is some data") {
+            throw std::logic_error("input_output_callback test failed");
+        }
+
+        return true;
+    }
+
+    size_t g_no_input_callback_times_called = 0;
+
+    void no_input_callback()
+    {
+        ++g_no_input_callback_times_called;
+        std::cout << "no_input_callback is called" << std::endl;
     }
 }  // namespace test_classes
 
@@ -140,8 +162,12 @@ namespace test_classes
 
 void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& original)
 {
-    test_classes::g_foo_callback_times_called = 0;
-    test_classes::g_foo_callback_2_times_called = 0;
+    test_classes::g_input_callback_times_called = 0;
+    test_classes::g_input_output_callback_times_called = 0;
+    test_classes::g_no_input_callback_times_called = 0;
+
+    facade.no_input_no_return_function();
+
     do_compare_results(facade, original, no_input_function);
     do_compare_results(facade, original, const_no_input_function);
 
@@ -159,12 +185,11 @@ void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& ori
 
     do_compare_results(facade, original, template_function, 100, 500.f);
 
-    // FIXME: this is workaround needed because there is no
-    // way yo make sure all callbacks have been replayed
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    facade::master().wait_all_pending_callbacks_replayed();
 
-    ASSERT_EQ(test_classes::g_foo_callback_times_called, 2);
-    ASSERT_EQ(test_classes::g_foo_callback_2_times_called, 1);
+    ASSERT_EQ(test_classes::g_input_callback_times_called, 2);
+    ASSERT_EQ(test_classes::g_input_output_callback_times_called, 1);
+    ASSERT_EQ(test_classes::g_no_input_callback_times_called, 1);
 }
 
 TEST(basic, compare_results)
@@ -178,12 +203,15 @@ TEST(basic, compare_results)
         foo_facade facade{std::move(impl)};
 
         facade.rewire_callbacks([](foo& impl, foo_facade& facade) {
-            facade.register_callback_input_output_function_cbk(foo_callback);
-            facade.register_callback_input_output_function_2_cbk(foo_callback_2);
+            facade.register_callback_input_function_cbk(input_callback);
+            facade.register_callback_input_output_function_cbk(input_output_callback);
+            facade.register_callback_no_input_function_cbk(no_input_callback);
+
+            impl.register_input_function_cbk(facade.get_callback_input_function_cbk());
             impl.register_input_output_function_cbk(
                 facade.get_callback_input_output_function_cbk());
-            impl.register_input_output_function_2_cbk(
-                facade.get_callback_input_output_function_2_cbk());
+            impl.register_no_input_function_cbk(
+                facade.get_callback_no_input_function_cbk());
         });
 
         test_classes::foo original;
@@ -195,8 +223,9 @@ TEST(basic, compare_results)
         test_classes::foo_facade facade;
         test_classes::foo original;
 
-        facade.register_callback_input_output_function_cbk(foo_callback);
-        facade.register_callback_input_output_function_2_cbk(foo_callback_2);
+        facade.register_callback_input_function_cbk(input_callback);
+        facade.register_callback_input_output_function_cbk(input_output_callback);
+        facade.register_callback_no_input_function_cbk(no_input_callback);
 
         compare_foo_result(facade, original);
         test_exceptions(facade);

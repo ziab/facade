@@ -40,7 +40,7 @@ namespace facade
             std::vector<std::thread> m_workers;
             std::queue<t_task> m_task_queue;
             mutable std::mutex m_queue_mutex;
-            std::condition_variable m_cv;
+            mutable std::condition_variable m_cv;
             bool m_running{false};
 
             using t_task_queue = decltype(m_task_queue);
@@ -97,7 +97,7 @@ namespace facade
                 return false;
             }
 
-            auto wait_completion_and_get_lock()
+            auto wait_completion_and_get_lock() const
             {
                 t_unique_lock ulck(m_queue_mutex);
                 while (!m_task_queue.empty() && m_running || m_current_workload != 0) {
@@ -107,7 +107,7 @@ namespace facade
             }
 
         public:
-            void wait_completion() { wait_completion_and_get_lock(); }
+            void wait_completion() const { wait_completion_and_get_lock(); }
 
             void stop()
             {
