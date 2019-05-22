@@ -67,12 +67,30 @@ public:                                                                         
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                               \
-    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;   \
     _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, std::move(ptr)) {} \
     _NAME() : facade(#_NAME) {}                                                 \
+    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;   \
     void rewire_callbacks(const t_callback_initializer& rewire)                 \
     {                                                                           \
         rewire(*m_impl, *this);                                                 \
+    }
+
+#define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                     \
+private:                                                                        \
+    _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, std::move(ptr)) {} \
+    _NAME() : facade(#_NAME) {}                                                 \
+                                                                                \
+public:                                                                         \
+    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;   \
+    void rewire_callbacks(const t_callback_initializer& rewire)                 \
+    {                                                                           \
+        rewire(*m_impl, *this);                                                 \
+    }                                                                           \
+    static auto& get_facade_instance()                                          \
+    {                                                                           \
+        static std::unique_ptr<_NAME> m_instance;                               \
+        if (!m_instance) m_instance = std::unique_ptr<_NAME>(new _NAME);        \
+        return *m_instance;                                                     \
     }
 
 namespace facade
