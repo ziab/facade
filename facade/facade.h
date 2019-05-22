@@ -56,14 +56,14 @@ public:                                                                         
                                                                                     \
     std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                         \
     {                                                                               \
-        return create_callback_wrapper<_RET, t_cbk_func_##_NAME, __VA_ARGS__>(      \
+        return create_callback_wrapper<_RET, t_cbk_func_##_NAME, ##__VA_ARGS__>(    \
             m_cbk_func_##_NAME, #_NAME);                                            \
     }                                                                               \
     void invoke_##_NAME(const ::facade::function_call& call)                        \
     {                                                                               \
         auto& func = m_cbk_func_##_NAME;                                            \
         if (!func) return;                                                          \
-        ::facade::invoke_callback<decltype(func), _RET, __VA_ARGS__>(func, call);   \
+        ::facade::invoke_callback<decltype(func), _RET, ##__VA_ARGS__>(func, call); \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                               \
