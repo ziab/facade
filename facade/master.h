@@ -190,9 +190,11 @@ namespace facade
 
         void unprotected_load_recordings()
         {
+            m_callbacks.clear();
             for (auto* facade : m_facades) {
                 facade->facade_clear();
                 facade->facade_load(make_recording_path(*facade));
+                unprotected_register_callbacks(*facade);
             }
         }
 

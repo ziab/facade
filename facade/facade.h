@@ -488,6 +488,11 @@ namespace facade
         }
 
         facade(std::string name) : facade_base(std::move(name)) {}
+
+        void set_impl(std::unique_ptr<t_type>&& impl_ptr)
+        {
+            m_impl = std::move(impl_ptr);
+        }
     };
 }  // namespace facade
 
