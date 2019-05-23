@@ -44,8 +44,8 @@
         using t_method = t_ret(t_args...);                                          \
         std::function lambda{                                                       \
             [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }}; \
-        return get_facade_instance().call_method<t_ret>(                                \
-            lambda, #_NAME, std::forward<t_args>(args)...);                             \
+        return get_facade_instance().call_method<t_ret>(                            \
+            lambda, #_NAME, std::forward<t_args>(args)...);                         \
     }
 
 // TODO : improve this, callback invokers should (probably) be added on construction
