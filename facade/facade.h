@@ -92,25 +92,22 @@ public:                                                                         
         rewire(*m_impl, *this);                                                          \
     }
 
-#define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                    \
-private:                                                                       \
-    _NAME() : facade(#_NAME) {}                                                \
-    ~_NAME() { m_impl = nullptr; }                                             \
-    static void facade_delete(_NAME* that) { delete that; }                    \
-public:                                                                        \
-    void set_impl(t_impl_type* impl_ptr) { m_impl = impl_ptr; }                \
-    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;  \
-    void rewire_callbacks(const t_callback_initializer& rewire)                \
-    {                                                                          \
-        rewire(*m_impl, *this);                                                \
-    }                                                                          \
-    static auto& get_facade_instance()                                         \
-    {                                                                          \
-        static std::unique_ptr<_NAME, std::function<void(_NAME*)>> m_instance; \
-        if (!m_instance)                                                       \
-            m_instance = std::unique_ptr<_NAME, std::function<void(_NAME*)>>(  \
-                new _NAME, facade_delete);                                     \
-        return *m_instance;                                                    \
+#define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                   \
+private:                                                                      \
+    _NAME() : facade(#_NAME) {}                                               \
+public:                                                                       \
+    ~_NAME() { m_impl = nullptr; }                                            \
+    void set_impl(t_impl_type* impl_ptr) { m_impl = impl_ptr; }               \
+    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>; \
+    void rewire_callbacks(const t_callback_initializer& rewire)               \
+    {                                                                         \
+        rewire(*m_impl, *this);                                               \
+    }                                                                         \
+    static auto& get_facade_instance()                                        \
+    {                                                                         \
+        static std::unique_ptr<_NAME> m_instance;                             \
+        if (!m_instance) m_instance = std::unique_ptr<_NAME>(new _NAME);      \
+        return *m_instance;                                                   \
     }
 
 namespace facade
