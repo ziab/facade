@@ -29,7 +29,7 @@ namespace utils
 
 namespace test_classes
 {
-    class foo
+    class a_class
     {
     public:
         using t_input_function_cbk = void(bool param1, int param2);
@@ -46,9 +46,9 @@ namespace test_classes
         std::function<t_no_input_function_cbk> m_no_input_function_cbk{nullptr};
 
     public:
-        foo(){};
+        a_class(){};
 
-        void no_input_no_return_function() 
+        void no_input_no_return_function()
         {
             if (m_no_input_function_cbk) m_no_input_function_cbk();
         }
@@ -94,10 +94,10 @@ namespace test_classes
         }
     };
 
-    class foo_facade : public facade::facade<foo>
+    class a_class_facade : public facade::facade<a_class>
     {
     public:
-        FACADE_CONSTRUCTOR(foo_facade);
+        FACADE_CONSTRUCTOR(a_class_facade);
         FACADE_METHOD(no_input_no_return_function);
         FACADE_METHOD(no_input_function);
         FACADE_METHOD(const_no_input_function);
@@ -108,7 +108,7 @@ namespace test_classes
         FACADE_CALLBACK(no_input_function_cbk, void);
     };
 
-    void test_exceptions(test_classes::foo_facade& facade)
+    void test_exceptions(test_classes::a_class_facade& facade)
     {
         facade.input_output_function(true, 43, std::string{});
     }
@@ -160,7 +160,7 @@ namespace test_classes
     ASSERT_EQ(A.method(__VA_ARGS__), B.method(__VA_ARGS__)) \
         << #method " result mismatched";
 
-void compare_foo_result(test_classes::foo_facade& facade, test_classes::foo& original)
+void compare_result(test_classes::a_class_facade& facade, test_classes::a_class& original)
 {
     test_classes::g_input_callback_times_called = 0;
     test_classes::g_input_output_callback_times_called = 0;
@@ -196,13 +196,13 @@ TEST(basic, compare_results)
 {
     using namespace test_classes;
     {
-        utils::delete_recording<foo_facade>();
+        utils::delete_recording<a_class_facade>();
         facade::master().start_recording();
         // Compare recording facade with the original implementation
-        auto impl = std::make_unique<foo>();
-        foo_facade facade{std::move(impl)};
+        auto impl = std::make_unique<a_class>();
+        a_class_facade facade{std::move(impl)};
 
-        facade.rewire_callbacks([](foo& impl, foo_facade& facade) {
+        facade.rewire_callbacks([](a_class& impl, a_class_facade& facade) {
             facade.register_callback_input_function_cbk(input_callback);
             facade.register_callback_input_output_function_cbk(input_output_callback);
             facade.register_callback_no_input_function_cbk(no_input_callback);
@@ -214,23 +214,86 @@ TEST(basic, compare_results)
                 facade.get_callback_no_input_function_cbk());
         });
 
-        test_classes::foo original;
-        compare_foo_result(facade, original);
+        test_classes::a_class original;
+        compare_result(facade, original);
     }
     {
         // Compare replaying facade with the original implementation
         facade::master().start_playing();
-        test_classes::foo_facade facade;
-        test_classes::foo original;
+        test_classes::a_class_facade facade;
+        test_classes::a_class original;
 
         facade.register_callback_input_function_cbk(input_callback);
         facade.register_callback_input_output_function_cbk(input_output_callback);
         facade.register_callback_no_input_function_cbk(no_input_callback);
 
-        compare_foo_result(facade, original);
+        compare_result(facade, original);
         test_exceptions(facade);
         utils::print_json(facade::master().make_recording_path(facade));
     }
+}
+
+namespace test_classes
+{
+    class singleton
+    {
+        const bool m_expected_param1{true};
+        const int m_expected_param2{42};
+
+        singleton() {}
+        ~singleton() {}
+
+    public:
+        static int no_input_function() { return 100500; }
+        std::string const_no_input_function(int val) const { return "100500"; }
+        static bool input_output_function(bool param1, int param2, std::string& output)
+        {
+            if (param1 == get_singleton().m_expected_param1 &&
+                param2 == get_singleton().m_expected_param2) {
+                output = "There is some data";
+                return 1;
+            }
+            output = "No data";
+            return 0;
+        }
+
+        static singleton& get_singleton()
+        {
+            static singleton instance;
+            return instance;
+        }
+    };
+
+    class singleton_facade : public facade::facade<singleton>
+    {
+    public:
+        FACADE_SINGLETON_CONSTRUCTOR(singleton_facade);
+        FACADE_STATIC_METHOD(no_input_function);
+        FACADE_METHOD(const_no_input_function);
+        FACADE_STATIC_METHOD(input_output_function);
+    };
+}  // namespace test_classes
+
+
+void compare_result(test_classes::singleton_facade& facade, test_classes::singleton& original)
+{
+    namespace t = test_classes;
+    ASSERT_EQ(
+        t::singleton_facade::no_input_function(), t::singleton::no_input_function());
+
+    do_compare_results(facade, original, const_no_input_function, 0);
+
+    std::string a_string, b_string;
+    ASSERT_EQ(t::singleton_facade::input_output_function(false, 3, a_string),
+        t::singleton::input_output_function(false, 3, b_string));
+    ASSERT_EQ(a_string, b_string);
+    a_string.clear();
+    b_string.clear();
+    ASSERT_EQ(facade.input_output_function(true, 42, a_string),
+        original.input_output_function(true, 42, b_string));
+    ASSERT_EQ(a_string, b_string);
+    a_string.clear();
+    b_string.clear();
 }
 
 int main(int argc, char** argv)
