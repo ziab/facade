@@ -97,9 +97,8 @@ private:                                                                       \
     _NAME() : facade(#_NAME) {}                                                \
     ~_NAME() { m_impl = nullptr; }                                             \
     static void facade_delete(_NAME* that) { delete that; }                    \
-    void set_impl(t_impl_type* impl_ptr) { m_impl = impl_ptr; }                \
-                                                                               \
 public:                                                                        \
+    void set_impl(t_impl_type* impl_ptr) { m_impl = impl_ptr; }                \
     using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;  \
     void rewire_callbacks(const t_callback_initializer& rewire)                \
     {                                                                          \
