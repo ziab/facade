@@ -67,7 +67,7 @@ namespace facade
     // master and facade(facade_base)
     class facade_interface
     {
-    public:
+    protected:
         // These prefixes are added mainly to avoid method name clashing with
         // methods in the original class implementation
         virtual void facade_save(const std::filesystem::path& path) = 0;
@@ -76,6 +76,10 @@ namespace facade
         virtual const std::string& facade_name() const = 0;
         virtual const std::list<function_call>& get_callbacks() const = 0;
         virtual void invoke_callback(const function_call& callback) = 0;
+
+    public:
+        friend class master;
+        friend class scheduled_callback_entry;
     };
 
     class facade_proxy
@@ -187,6 +191,7 @@ namespace facade
         void finalize(facade_interface& facade)
         {
             if (is_recording()) { facade.facade_save(make_recording_path(facade)); }
+            facade.facade_clear();
         }
 
         void unprotected_register_callbacks(const std::shared_ptr<facade_proxy>& facade)
@@ -318,6 +323,8 @@ namespace facade
 
         void start_recording()
         {
+            stop();
+
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::recording;
             m_origin = std::chrono::high_resolution_clock::now();
@@ -325,6 +332,8 @@ namespace facade
 
         void start_playing()
         {
+            stop();
+
             t_lock_guard lg{m_mtx};
             m_mode = facade_mode::playing;
             unprotected_load_recordings();
@@ -347,6 +356,7 @@ namespace facade
 
         void stop()
         {
+            if (is_passing_through()) return;
             {
                 t_lock_guard lg{m_mtx};
                 m_pool.stop();

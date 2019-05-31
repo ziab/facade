@@ -296,6 +296,42 @@ void compare_result(test_classes::singleton_facade& facade, test_classes::single
     b_string.clear();
 }
 
+TEST(singleton, compare_results)
+{
+    using namespace test_classes;
+    const auto facade_recording_file =
+        facade::master().make_recording_path(singleton_facade::get_facade_instance());
+
+    std::error_code ec;
+    std::filesystem::remove(facade_recording_file, ec);
+
+    {
+        facade::master().start_recording();
+        // Compare recording facade with the original implementation
+        auto& impl = singleton::get_singleton();
+        auto& singleton_facade_inst = singleton_facade::get_facade_instance();
+        singleton_facade_inst.set_impl(&impl);
+        singleton_facade_inst.register_facade();
+
+        auto& original = singleton::get_singleton();
+        compare_result(singleton_facade_inst, original);
+
+        singleton_facade_inst.unregister_facade();
+    }
+    {
+        // Compare replaying facade with the original implementation
+        facade::master().start_playing();
+        auto& impl = singleton::get_singleton();
+        auto& singleton_facade_inst = singleton_facade::get_facade_instance();
+
+        singleton_facade_inst.register_facade();
+
+        compare_result(singleton_facade_inst, impl);
+        //utils::print_json(facade_recording_file);
+        singleton_facade_inst.unregister_facade();
+    }
+}
+
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

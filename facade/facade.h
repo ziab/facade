@@ -78,23 +78,27 @@ public:                                                                         
         ::facade::invoke_callback<decltype(func), _RET, ##__VA_ARGS__>(func, call); \
     }
 
-#define FACADE_CONSTRUCTOR(_NAME)                                                        \
-    _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME) { m_impl = ptr.release(); } \
-    _NAME() : facade(#_NAME) {}                                                          \
-    ~_NAME() { delete m_impl; }                                                          \
-    void set_impl(std::unique_ptr<t_impl_type>&& impl_ptr)                               \
-    {                                                                                    \
-        m_impl = impl_ptr.release();                                                     \
-    }                                                                                    \
-    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>;            \
-    void rewire_callbacks(const t_callback_initializer& rewire)                          \
-    {                                                                                    \
-        rewire(*m_impl, *this);                                                          \
+#define FACADE_CONSTRUCTOR(_NAME)                                             \
+    _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, true)            \
+    {                                                                         \
+        m_impl = ptr.release();                                               \
+    }                                                                         \
+    _NAME() : facade(#_NAME, true) {}                                         \
+    ~_NAME() { delete m_impl; }                                               \
+    void set_impl(std::unique_ptr<t_impl_type>&& impl_ptr)                    \
+    {                                                                         \
+        m_impl = impl_ptr.release();                                          \
+    }                                                                         \
+    using t_callback_initializer = std::function<void(t_impl_type&, _NAME&)>; \
+    void rewire_callbacks(const t_callback_initializer& rewire)               \
+    {                                                                         \
+        rewire(*m_impl, *this);                                               \
     }
 
 #define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                   \
 private:                                                                      \
-    _NAME() : facade(#_NAME) {}                                               \
+    _NAME() : facade(#_NAME, false) {}                                        \
+                                                                              \
 public:                                                                       \
     ~_NAME() { m_impl = nullptr; }                                            \
     void set_impl(t_impl_type* impl_ptr) { m_impl = impl_ptr; }               \
@@ -108,7 +112,9 @@ public:                                                                       \
         static std::unique_ptr<_NAME> m_instance;                             \
         if (!m_instance) m_instance = std::unique_ptr<_NAME>(new _NAME);      \
         return *m_instance;                                                   \
-    }
+    }                                                                         \
+    void register_facade() { internal_register(); }                           \
+    void unregister_facade() { internal_unregister(); }
 
 namespace facade
 {
@@ -206,6 +212,8 @@ namespace facade
     template <typename t_callback_function, typename t_ret, typename... t_args>
     void invoke_callback(t_callback_function& callback, const function_call& this_call)
     {
+        if (!callback) return;
+
         std::any any_ret;
         std::tuple<typename std::decay<t_args>::type...> pre_call_args_tuple;
         std::tuple<typename std::decay<t_args>::type...> post_call_args_tuple;
@@ -245,6 +253,7 @@ namespace facade
         std::mutex m_mtx;
         const std::string m_name;
         result_selection m_selection{result_selection::cycle};
+        bool m_is_registered{false};
         // clang-format on
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
@@ -304,9 +313,25 @@ namespace facade
             m_callback_invokers[callback.function_name](callback);
         }
 
-        void initialize() { master().register_facade(this); }
+        void internal_register()
+        {
+            if (m_is_registered) return;
+            master().register_facade(this);
+            m_is_registered = true;
+        }
 
-        facade_base(std::string name) : m_name(std::move(name)) { initialize(); }
+        void internal_unregister()
+        {
+            if (!m_is_registered) return;
+            master().unregister_facade(this);
+            m_is_registered = false;
+        }
+
+        facade_base(std::string name, bool register_on_construction)
+            : m_name(std::move(name))
+        {
+            if (register_on_construction) internal_register();
+        }
 
     public:
         const std::string& facade_name() const override { return m_name; }
@@ -320,7 +345,7 @@ namespace facade
                 cereal::make_nvp("callbacks", m_callbacks));
         }
 
-        ~facade_base() { master().unregister_facade(this); }
+        ~facade_base() { internal_unregister(); }
     };
 
     template <typename t_type>
@@ -517,7 +542,10 @@ namespace facade
         using t_impl_type = t_type;
         using t_const_impl_type = typename std::add_const<t_type>::type;
 
-        facade(std::string name) : facade_base(std::move(name)) {}
+        facade(std::string name, bool register_on_consturction)
+            : facade_base(std::move(name), register_on_consturction)
+        {
+        }
     };
 }  // namespace facade
 
