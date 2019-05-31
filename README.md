@@ -75,14 +75,15 @@ Then you create a recording of `network_interface`'s behavior:
 ```cpp
 void run()
 {
-    {   // record network_interface
+    {
+        facade::master().start_recording();
         auto net_impl = std::make_unique<network_interface>();
-        network_interface_facade net{ std::move(net_impl), true };
+        network_interface_facade net{std::move(net_impl)};
         use_network(net);
-        net.write_calls("network_interface.json");
     }
-    {   // replay network_interface
-        network_interface_facade net{ "network_interface.json" };
+    {
+        facade::master().start_playing();
+        network_interface_facade net;
         use_network(net);
     }
 }
