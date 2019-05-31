@@ -4,6 +4,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -55,6 +56,13 @@ namespace facade
         auto get_first_offset() const { return results.at(0).offest_from_origin; }
     };
 
+    enum class facade_mode
+    {
+        passthrough = 0,
+        recording,
+        playing,
+    };
+
     // The reason this interface is needed is to break circular dependency between the
     // master and facade(facade_base)
     class facade_interface
@@ -70,42 +78,95 @@ namespace facade
         virtual void invoke_callback(const function_call& callback) = 0;
     };
 
-    enum class facade_mode
+    class facade_proxy
     {
-        passthrough = 0,
-        recording,
-        playing,
-    };
+        std::atomic_int64_t m_active_users{0};
+        std::mutex m_mtx;
+        std::condition_variable m_cv;
+        facade_interface* m_facade;
 
-    struct scheduled_callback_entry
-    {
-        const t_duration offset;
-        const function_call& call;
-        facade_interface& facade;
+    public:
+        facade_proxy(facade_interface* facade_ptr) : m_facade(facade_ptr) {}
+        facade_proxy(const facade_proxy&) = delete;
+        facade_proxy& operator=(const facade_proxy&) = delete;
 
-        bool operator<(const scheduled_callback_entry& rhv) const
+        facade_interface* ref()
         {
-            return offset < rhv.offset;
+            std::lock_guard<std::mutex> lg{m_mtx};
+            if (!m_facade) return nullptr;
+            m_active_users.fetch_add(1);
+            return m_facade;
         }
 
-        scheduled_callback_entry(const function_call& _cbk, facade_interface& _facade)
-            : offset(_cbk.get_first_offset()), call(_cbk), facade(_facade)
+        void unref()
+        {
+            std::lock_guard<std::mutex> lg{m_mtx};
+            if (!m_facade) return;
+            m_active_users.fetch_sub(1);
+            m_cv.notify_all();
+        }
+
+        void teardown()
+        {
+            std::unique_lock<std::mutex> ul{m_mtx};
+            while (m_active_users.load() != 0) { m_cv.wait(ul); }
+            m_facade = nullptr;
+            m_cv.notify_all();
+        }
+
+        operator bool() const { return m_facade != nullptr; }
+        facade_interface* operator->() { return m_facade; }
+        facade_interface& operator*() { return *m_facade; }
+    };
+
+    class scheduled_callback_entry
+    {
+        const t_duration m_offset;
+        const function_call& m_call;
+        std::shared_ptr<facade_proxy> m_facade_proxy;
+
+    public:
+        bool operator<(const scheduled_callback_entry& rhv) const
+        {
+            return m_offset < rhv.m_offset;
+        }
+
+        scheduled_callback_entry(
+            const function_call& cbk, std::shared_ptr<facade_proxy> facade)
+            : m_offset(cbk.get_first_offset()),
+              m_call(cbk),
+              m_facade_proxy(std::move(facade))
         {
         }
 
         scheduled_callback_entry(const scheduled_callback_entry& that)
-            : offset(that.offset), call(that.call), facade(that.facade)
+            : m_offset(that.m_offset),
+              m_call(that.m_call),
+              m_facade_proxy(that.m_facade_proxy)
         {
         }
 
-        void invoke() const { facade.invoke_callback(call); }
+        auto offset() const { return m_offset; }
+
+        void invoke() const
+        {
+            auto* facade = m_facade_proxy->ref();
+            // if nullptr is returned then the facade has been deleted
+            if (!facade) return;
+            try {
+                facade->invoke_callback(m_call);
+            } catch (...) {
+                // TODO: report exception
+            }
+            m_facade_proxy->unref();
+        }
     };
 
     class master
     {
         mutable std::mutex m_mtx;
         mutable std::condition_variable m_cv;
-        std::set<facade_interface*> m_facades;
+        std::map<facade_interface*, std::shared_ptr<facade_proxy>> m_facades;
         utils::worker_pool m_pool{1};
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
@@ -128,9 +189,9 @@ namespace facade
             if (is_recording()) { facade.facade_save(make_recording_path(facade)); }
         }
 
-        void unprotected_register_callbacks(facade_interface& facade)
+        void unprotected_register_callbacks(const std::shared_ptr<facade_proxy>& facade)
         {
-            const auto& callbacks = facade.get_callbacks();
+            const auto& callbacks = (*facade)->get_callbacks();
             for (const auto& cbk : callbacks) {
                 scheduled_callback_entry entry{cbk, facade};
                 m_callbacks.insert(entry);
@@ -150,7 +211,7 @@ namespace facade
                 const auto it = m_callbacks.begin();
                 auto callback_entry{std::move(*it)};
                 m_callbacks.erase(it);
-                sleep_until(callback_entry.offset);
+                sleep_until(callback_entry.offset());
                 m_pool.submit([callback_entry]() { callback_entry.invoke(); });
 
                 m_cv.notify_all();
@@ -163,18 +224,26 @@ namespace facade
             initialize(*facade);
             {
                 t_lock_guard lg{m_mtx};
-                m_facades.insert(facade);
-                unprotected_register_callbacks(*facade);
+                auto&& [it, inserted] =
+                    m_facades.insert({facade, std::make_shared<facade_proxy>(facade)});
+                unprotected_register_callbacks(it->second);
                 m_cv.notify_all();
             }
         }
         void unregister_facade(facade_interface* facade)
         {
+            std::shared_ptr<facade_proxy> proxy_shptr;
             {
                 t_lock_guard lg{m_mtx};
-                m_facades.erase(facade);
+                const auto found = m_facades.find(facade);
+                if (found == m_facades.end()) return;
+                proxy_shptr = std::move(found->second);
+                m_facades.erase(found);
                 m_cv.notify_all();
             }
+            // this will ensure that facade is not replaying any recoded callbacks
+            // and it's safe to delete it now
+            proxy_shptr->teardown();
             finalize(*facade);
         }
 
@@ -182,19 +251,25 @@ namespace facade
 
         void unprotected_save_recordings()
         {
-            for (auto* facade : m_facades) {
-                facade->facade_save(make_recording_path(*facade));
-                facade->facade_clear();
+            for (const auto& [_unused, facade_proxy_shptr] : m_facades) {
+                if (!facade_proxy_shptr) continue;
+                auto& facade = **facade_proxy_shptr;
+                const auto path = make_recording_path(facade);
+                facade.facade_save(path);
+                facade.facade_clear();
             }
         }
 
         void unprotected_load_recordings()
         {
             m_callbacks.clear();
-            for (auto* facade : m_facades) {
-                facade->facade_clear();
-                facade->facade_load(make_recording_path(*facade));
-                unprotected_register_callbacks(*facade);
+            for (const auto& [_unused, facade_proxy_shptr] : m_facades) {
+                if (!facade_proxy_shptr) continue;
+                auto& facade = **facade_proxy_shptr;
+                const auto path = make_recording_path(facade);
+                facade.facade_clear();
+                facade.facade_load(path);
+                unprotected_register_callbacks(facade_proxy_shptr);
             }
         }
 
@@ -258,13 +333,14 @@ namespace facade
             m_player_thread = std::thread{[this]() { player_thread_main(); }};
         }
 
-        void wait_all_pending_callbacks_replayed() const {
+        void wait_all_pending_callbacks_replayed() const
+        {
             t_unique_lock ulck(m_mtx);
             while (!m_callbacks.empty() && m_mode == facade_mode::playing) {
                 m_cv.wait(ulck);
             }
             // when all pending callback entries are removed from the queue or
-            // playing has stopped we need to wait until all callback calls 
+            // playing has stopped we need to wait until all callback calls
             // that are being processed by the worker pool have completed
             m_pool.wait_completion();
         }
@@ -276,10 +352,10 @@ namespace facade
                 m_pool.stop();
                 if (is_recording()) unprotected_save_recordings();
                 m_mode = facade_mode::passthrough;
-                m_cv.notify_all(); // notfiy that m_player_thread should stop
+                m_cv.notify_all();  // notfiy that m_player_thread should stop
             }
             if (m_player_thread.joinable()) m_player_thread.join();
-            m_cv.notify_all();  // notfiy wait_all_pending_callbacks_replayed 
+            m_cv.notify_all();  // notfiy wait_all_pending_callbacks_replayed
         }
 
         ~master() { stop(); }
