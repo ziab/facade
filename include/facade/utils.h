@@ -89,3 +89,20 @@ namespace facade
         }
     }  // namespace utils
 }  // namespace facade
+
+// Check for any member function with given name
+#define FACADE_CREATE_MEMBER_CHECK(_NAME)                                               \
+    template <typename t_class, typename enabled = void>                                \
+    struct has_member_##_NAME                                                           \
+    {                                                                                   \
+        static constexpr bool value = false;                                            \
+    };                                                                                  \
+    template <typename t_class>                                                         \
+    struct has_member_##_NAME<t_class,                                                  \
+        std::enable_if_t<std::is_member_function_pointer_v<decltype(&t_class::_NAME)>>> \
+    {                                                                                   \
+        static constexpr bool value =                                                   \
+            std::is_member_function_pointer_v<decltype(&t_class::_NAME)>;               \
+    };
+
+#define FACADE_HAS_MEMBER(_NAME) has_member_##_NAME<decltype(*this)>::value

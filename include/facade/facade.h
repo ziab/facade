@@ -25,15 +25,27 @@
 
 #include <algorithm/md5.hpp>  // digestcpp
 
-#define FACADE_METHOD(_NAME)                                                       \
-    template <typename... t_args>                                                  \
-    auto _NAME(t_args&&... args)                                                   \
-    {                                                                              \
-        using t_ret = decltype(m_impl->_NAME(args...));                            \
-        using t_method = t_ret(t_args...);                                         \
-        std::function lambda{                                                      \
-            [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }}; \
-        return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
+#define FACADE_CHECK_OPTIONAL_METHODS(_NAME)           \
+private:                                               \
+    FACADE_CREATE_MEMBER_CHECK(mock_##_NAME);          \
+    FACADE_CREATE_MEMBER_CHECK(override_args_##_NAME); \
+                                                       \
+public:
+
+#define FACADE_METHOD(_NAME)                                                            \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                                \
+    template <typename... t_args>                                                       \
+    auto _NAME(t_args&&... args)                                                        \
+    {                                                                                   \
+        using t_ret = decltype(m_impl->_NAME(args...));                                 \
+        using t_method = t_ret(t_args...);                                              \
+        std::function lambda{                                                           \
+            [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }};      \
+        std::function<t_method> mock;                                                   \
+        if constexpr (FACADE_HAS_MEMBER(mock_##_NAME)) {                                \
+            mock = [this](t_args&&... args) -> t_ret { return mock_##_NAME(args...); }; \
+        }                                                                               \
+        return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);       \
     }
 
 #define FACADE_STATIC_METHOD(_NAME)                                                 \
@@ -547,10 +559,7 @@ namespace facade
         {
         }
 
-        facade(std::string name)
-            : facade_base(std::move(name), true)
-        {
-        }
+        facade(std::string name) : facade_base(std::move(name), true) {}
     };
 }  // namespace facade
 
