@@ -546,6 +546,11 @@ namespace facade
             : facade_base(std::move(name), register_on_consturction)
         {
         }
+
+        facade(std::string name)
+            : facade_base(std::move(name), true)
+        {
+        }
     };
 }  // namespace facade
 

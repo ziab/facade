@@ -7,8 +7,8 @@ add_library(facade INTERFACE)
 
 target_include_directories(facade INTERFACE 
 	${CMAKE_CURRENT_SOURCE_DIR}
-	${CMAKE_CURRENT_SOURCE_DIR}/../depends/cereal/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../depends/digestpp
+	${CMAKE_CURRENT_SOURCE_DIR}/../../depends/cereal/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../depends/digestpp
 	)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
