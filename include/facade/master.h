@@ -172,6 +172,7 @@ namespace facade
         mutable std::mutex m_mtx;
         mutable std::condition_variable m_cv;
         std::map<facade_interface*, std::shared_ptr<facade_proxy>> m_facades;
+        utils::worker_pool m_pool{4};
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
         std::chrono::time_point<std::chrono::high_resolution_clock> m_origin;
