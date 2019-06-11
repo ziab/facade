@@ -196,6 +196,7 @@ TEST(basic, compare_results)
 {
     using namespace test_classes;
     {
+        facade::master().set_number_of_workers(1);
         utils::delete_recording<a_class_facade>();
         facade::master().start_recording();
         // Compare recording facade with the original implementation
