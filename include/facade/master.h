@@ -11,12 +11,12 @@
 #include <thread>
 #include <vector>
 
+#include "utils.h"
 #include "worker_pool.h"
 
 namespace facade
 {
     using namespace std::chrono_literals;
-    using t_duration = std::chrono::microseconds;
 
     enum class result_selection
     {
@@ -152,11 +152,12 @@ namespace facade
 
         auto offset() const { return m_offset; }
 
-        void invoke() const
+        void invoke(const t_highres_timepoint& origin) const
         {
             auto* facade = m_facade_proxy->ref();
             // if nullptr is returned then the facade has been deleted
             if (!facade) return;
+            utils::sleep_until(origin, m_offset);
             try {
                 facade->invoke_callback(m_call);
             } catch (...) {
@@ -171,7 +172,6 @@ namespace facade
         mutable std::mutex m_mtx;
         mutable std::condition_variable m_cv;
         std::map<facade_interface*, std::shared_ptr<facade_proxy>> m_facades;
-        utils::worker_pool m_pool{1};
         std::filesystem::path m_recording_dir;
         std::string m_recording_file_extention;
         std::chrono::time_point<std::chrono::high_resolution_clock> m_origin;
@@ -216,8 +216,10 @@ namespace facade
                 const auto it = m_callbacks.begin();
                 auto callback_entry{std::move(*it)};
                 m_callbacks.erase(it);
-                sleep_until(callback_entry.offset());
-                m_pool.submit([callback_entry]() { callback_entry.invoke(); });
+                auto origin = m_origin;
+                m_pool.submit([callback_entry, origin = std::move(origin)]() {
+                    callback_entry.invoke(origin);
+                });
 
                 m_cv.notify_all();
             }
@@ -313,12 +315,11 @@ namespace facade
                 std::chrono::high_resolution_clock::now() - m_origin);
         }
 
-        void sleep_until(const t_duration& that_offset_form_origin) const
+        void set_number_of_workers(size_t workers)
         {
-            const auto this_offset = get_offset_from_origin();
-            const auto diff = that_offset_form_origin - this_offset;
-            if (diff < t_duration::zero()) return;
-            std::this_thread::sleep_for(diff);
+            t_lock_guard lg{m_mtx};
+            if (!is_passing_through()) return;
+            m_pool = utils::worker_pool{workers};
         }
 
         void start_recording()

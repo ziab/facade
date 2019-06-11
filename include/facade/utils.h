@@ -1,8 +1,13 @@
+#pragma once
 #include <chrono>
 #include <iostream>
 
 namespace facade
 {
+    using t_duration = std::chrono::microseconds;
+    using t_highres_timepoint =
+        std::chrono::time_point<std::chrono::high_resolution_clock>;
+
     namespace utils
     {
         namespace traits
@@ -53,6 +58,22 @@ namespace facade
                 return std::chrono::duration_cast<t_duration>(now - m_time_started);
             }
         };
+
+        inline auto get_offset_from_origin(const t_highres_timepoint& origin)
+        {
+            return std::chrono::duration_cast<t_duration>(
+                std::chrono::high_resolution_clock::now() - origin);
+        }
+
+        inline void sleep_until(
+            const t_highres_timepoint& origin,
+            const t_duration& that_offset_form_origin)
+        {
+            const auto this_offset = get_offset_from_origin(origin);
+            const auto diff = that_offset_form_origin - this_offset;
+            if (diff < t_duration::zero()) return;
+            std::this_thread::sleep_for(diff);
+        }
 
         template <typename t_visitor>
         inline void visit_args_impl(t_visitor&)
