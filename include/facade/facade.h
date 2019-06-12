@@ -62,7 +62,6 @@ public:
         std::function<t_method> overrider;                                          \
         if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
             overrider = [](t_args&&... args) -> t_ret {                             \
-                return t_impl_type::override_##_NAME(args...);                      \
             };                                                                      \
         }                                                                           \
         return get_facade_instance().call_method<t_ret>(                            \
@@ -97,11 +96,11 @@ public:                                                                         
     {                                                                               \
         auto& func = m_cbk_func_##_NAME;                                            \
         if (!func) return;                                                          \
-        using t_method = _RET(##__VA_ARGS__);                                       \
+        using t_method = _RET(__VA_ARGS__);                                         \
         std::function<t_method> overrider;                                          \
         if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
             overrider = [](auto&&... args) -> _RET {                                \
-                return t_impl_type::override_##_NAME(args...);                      \
+                return override_##_NAME(args...);                                   \
             };                                                                      \
         }                                                                           \
         ::facade::invoke_callback<decltype(func), _RET, ##__VA_ARGS__>(func, call); \
