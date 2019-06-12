@@ -252,10 +252,10 @@ namespace test_classes
             if (param1 == get_singleton().m_expected_param1 &&
                 param2 == get_singleton().m_expected_param2) {
                 output = "There is some data";
-                return 1;
+                return true;
             }
             output = "No data";
-            return 0;
+            return false;
         }
 
         static singleton& get_singleton()

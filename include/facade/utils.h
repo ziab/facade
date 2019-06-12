@@ -126,4 +126,4 @@ namespace facade
             std::is_member_function_pointer_v<decltype(&t_class::_NAME)>;               \
     };
 
-#define FACADE_HAS_MEMBER(_NAME) has_member_##_NAME<decltype(*this)>::value
+#define FACADE_HAS_MEMBER(_TYPE, _NAME) has_member_##_NAME<_TYPE>::value
