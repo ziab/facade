@@ -62,6 +62,7 @@ public:
         std::function<t_method> overrider;                                          \
         if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
             overrider = [](t_args&&... args) -> t_ret {                             \
+                return override_##_NAME(args...);                                   \
             };                                                                      \
         }                                                                           \
         return get_facade_instance().call_method<t_ret>(                            \
