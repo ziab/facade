@@ -32,41 +32,44 @@ private:                                          \
                                                   \
 public:
 
-#define FACADE_METHOD(_NAME)                                                       \
-    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                           \
-    template <typename... t_args>                                                  \
-    auto _NAME(t_args&&... args)                                                   \
-    {                                                                              \
-        using t_ret = decltype(m_impl->_NAME(args...));                            \
-        using t_method = t_ret(t_args...);                                         \
-        std::function lambda{                                                      \
-            [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }}; \
-        std::function<t_method> overrider;                                         \
-        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {          \
-            overrider = [this](t_args&&... args) -> t_ret {                        \
-                return override_##_NAME(args...);                                  \
-            };                                                                     \
-        }                                                                          \
-        return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
+#define FACADE_METHOD(_NAME)                                                          \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                              \
+    template <typename... t_args>                                                     \
+    auto _NAME(t_args&&... args)                                                      \
+    {                                                                                 \
+        using t_ret = decltype(m_impl->_NAME(args...));                               \
+        using t_method = t_ret(t_args...);                                            \
+        std::function method{                                                         \
+            [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }};    \
+        std::function<t_method> overrider;                                            \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
+            overrider = [this](t_args&&... args) -> t_ret {                           \
+                return override_##_NAME(args...);                                     \
+            };                                                                        \
+        }                                                                             \
+        ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
+        return call_method<t_ret>(                                                    \
+            std::move(ctx), #_NAME, std::forward<t_args>(args)...);                   \
     }
 
-#define FACADE_STATIC_METHOD(_NAME)                                                 \
-    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                            \
-    template <typename... t_args>                                                   \
-    static auto _NAME(t_args&&... args)                                             \
-    {                                                                               \
-        using t_ret = decltype(t_impl_type::_NAME(args...));                        \
-        using t_method = t_ret(t_args...);                                          \
-        std::function lambda{                                                       \
-            [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }}; \
-        std::function<t_method> overrider;                                          \
-        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
-            overrider = [](t_args&&... args) -> t_ret {                             \
-                return override_##_NAME(args...);                                   \
-            };                                                                      \
-        }                                                                           \
-        return get_facade_instance().call_method<t_ret>(                            \
-            lambda, #_NAME, std::forward<t_args>(args)...);                         \
+#define FACADE_STATIC_METHOD(_NAME)                                                   \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                              \
+    template <typename... t_args>                                                     \
+    static auto _NAME(t_args&&... args)                                               \
+    {                                                                                 \
+        using t_ret = decltype(t_impl_type::_NAME(args...));                          \
+        using t_method = t_ret(t_args...);                                            \
+        std::function method{                                                         \
+            [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};   \
+        std::function<t_method> overrider;                                            \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
+            overrider = [](t_args&&... args) -> t_ret {                               \
+                return override_##_NAME(args...);                                     \
+            };                                                                        \
+        }                                                                             \
+        ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
+        return get_facade_instance().call_method<t_ret>(                              \
+            std::move(ctx), #_NAME, std::forward<t_args>(args)...);                   \
     }
 
 // TODO : improve this, callback invokers should (probably) be added on construction
@@ -95,19 +98,21 @@ public:                                                                         
     }                                                                               \
     void invoke_##_NAME(const ::facade::function_call& call)                        \
     {                                                                               \
-        auto& func = m_cbk_func_##_NAME;                                            \
-        if (!func) return;                                                          \
+        const auto& cbk = m_cbk_func_##_NAME;                                       \
+        if (!cbk) return;                                                           \
         using t_method = _RET(__VA_ARGS__);                                         \
         std::function<t_method> overrider;                                          \
-        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {           \
             overrider = [](auto&&... args) -> _RET {                                \
                 return override_##_NAME(args...);                                   \
             };                                                                      \
         }                                                                           \
-        ::facade::invoke_callback<decltype(func), _RET, ##__VA_ARGS__>(func, call); \
+        ::facade::function_call_context ctx{cbk, std::move(overrider)};             \
+        ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);   \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                             \
+    using t_this_type = typename ::facade::utils::get_type<_NAME>::type;      \
     _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, true)            \
     {                                                                         \
         m_impl = ptr.release();                                               \
@@ -125,6 +130,8 @@ public:                                                                         
     }
 
 #define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                   \
+    using t_this_type = typename ::facade::utils::get_type<_NAME>::type;      \
+                                                                              \
 private:                                                                      \
     _NAME() : facade(#_NAME, false) {}                                        \
                                                                               \
@@ -189,6 +196,18 @@ namespace facade
     using t_cereal_input_archive = cereal::JSONInputArchive;
     using t_hasher = digestpp::md5;
 
+    template <typename t_function, typename t_overrider>
+    struct function_call_context
+    {
+        t_function function;
+        t_overrider overrider;
+
+        function_call_context(t_function _function, t_overrider _overrider)
+            : function(std::move(_function)), overrider(std::move(_overrider))
+        {
+        }
+    };
+
     template <typename t_archive>
     struct arg_unpacker
     {
@@ -238,10 +257,10 @@ namespace facade
         }
     }
 
-    template <typename t_callback_function, typename t_ret, typename... t_args>
-    void invoke_callback(t_callback_function& callback, const function_call& this_call)
+    template <typename t_ctx, typename t_ret, typename... t_args>
+    void invoke_callback(t_ctx& ctx, const function_call& this_call)
     {
-        if (!callback) return;
+        if (!ctx.function) return;
 
         std::any any_ret;
         std::tuple<typename std::decay<t_args>::type...> pre_call_args_tuple;
@@ -249,12 +268,15 @@ namespace facade
 
         unpack_callback<t_ret>(this_call, any_ret, pre_call_args_tuple);
 
+        // override arguments
+        if (ctx.overrider) std::apply(ctx.function, pre_call_args_tuple);
+
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
-            t_ret ret = std::apply(callback, pre_call_args_tuple);
+            t_ret ret = std::apply(ctx.function, pre_call_args_tuple);
             // TODO: [CALLBACKS] check callback post call and return values
         } else {
-            std::apply(callback, pre_call_args_tuple);
+            std::apply(ctx.function, pre_call_args_tuple);
         }
     }
 
@@ -404,9 +426,9 @@ namespace facade
             }
         }
 
-        template <typename t_ret, typename t_method, typename... t_args>
+        template <typename t_ret, typename t_overrider, typename... t_args>
         typename std::decay<t_ret>::type replay_function_call(
-            t_method&& method, const std::string& method_name, t_args&&... args)
+            t_overrider&& overrider, const std::string& method_name, t_args&&... args)
         {
             constexpr const bool has_return = !std::is_same<t_ret, void>::value;
             const auto method_it = m_calls.find(method_name);
@@ -433,12 +455,14 @@ namespace facade
                 this_method_call_it->second.get_next_result(m_selection);
             std::this_thread::sleep_for(t_duration{this_method_call_result.duration});
             unpack(this_method_call_result.post_call_args, std::forward<t_args>(args)...);
-            if constexpr (has_return) {
+            if constexpr (!has_return) {
+                if (overrider) { overrider(std::forward<t_args>(args)...); }
+            } else {
                 typename std::decay<t_ret>::type ret{};
                 unpack(this_method_call_result.return_value, ret);
+                if (overrider) { ret = overrider(std::forward<t_args>(args)...); }
                 return ret;
             }
-            if constexpr (has_return) return {};
         }
 
         void insert_method_call(const std::string& method_name,
@@ -514,13 +538,13 @@ namespace facade
             return method(std::forward<t_args>(args)...);
         }
 
-        template <typename t_ret, typename t_method, typename... t_args>
+        template <typename t_ret, typename t_ctx, typename... t_args>
         typename std::decay<t_ret>::type call_method(
-            t_method&& method, const std::string& method_name, t_args&&... args)
+            t_ctx&& ctx, const std::string& method_name, t_args&&... args)
         {
             if (is_playing()) {
                 return replay_function_call<t_ret>(
-                    method, method_name, std::forward<t_args>(args)...);
+                    ctx.overrider, method_name, std::forward<t_args>(args)...);
             }
             if (is_recording()) {
                 auto inserter = [this](const std::string& method_name,
@@ -529,10 +553,10 @@ namespace facade
                     insert_method_call(method_name, pre_call_args, std::move(result));
                 };
                 return call_function_and_record<t_ret>(
-                    method, method_name, inserter, std::forward<t_args>(args)...);
+                    ctx.function, method_name, inserter, std::forward<t_args>(args)...);
             } else {
                 return pass_through<t_ret>(
-                    method, method_name, std::forward<t_args>(args)...);
+                    ctx.function, method_name, std::forward<t_args>(args)...);
             }
         }
 
@@ -560,9 +584,9 @@ namespace facade
         }
 
         template <typename t_ret, typename t_method, typename... t_args>
-        auto create_callback_wrapper(t_method method, const std::string& method_name)
+        auto create_callback_wrapper(t_method& method, const std::string& method_name)
         {
-            return [this, method, method_name](t_args... args) -> t_ret {
+            return [this, &method, method_name](t_args... args) -> t_ret {
                 return call_callback<t_ret>(method, method_name, args...);
             };
         }

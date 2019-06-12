@@ -108,6 +108,12 @@ namespace facade
             type_printer tp;
             visit_args(tp, std::forward<t_args>(args)...);
         }
+
+        template <typename t_input_type>
+        struct get_type
+        {
+            using type = t_input_type;
+        };
     }  // namespace utils
 }  // namespace facade
 
