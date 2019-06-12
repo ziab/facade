@@ -25,7 +25,15 @@
 
 #include <algorithm/md5.hpp>  // digestcpp
 
+#define FACADE_CHECK_OPTIONAL_METHODS(_NAME)      \
+private:                                          \
+    FACADE_CREATE_MEMBER_CHECK(mock_##_NAME);     \
+    FACADE_CREATE_MEMBER_CHECK(override_##_NAME); \
+                                                  \
+public:
+
 #define FACADE_METHOD(_NAME)                                                       \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                           \
     template <typename... t_args>                                                  \
     auto _NAME(t_args&&... args)                                                   \
     {                                                                              \
@@ -33,10 +41,17 @@
         using t_method = t_ret(t_args...);                                         \
         std::function lambda{                                                      \
             [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }}; \
+        std::function<t_method> overrider;                                         \
+        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {          \
+            overrider = [this](t_args&&... args) -> t_ret {                        \
+                return override_##_NAME(args...);                                  \
+            };                                                                     \
+        }                                                                          \
         return call_method<t_ret>(lambda, #_NAME, std::forward<t_args>(args)...);  \
     }
 
 #define FACADE_STATIC_METHOD(_NAME)                                                 \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                            \
     template <typename... t_args>                                                   \
     static auto _NAME(t_args&&... args)                                             \
     {                                                                               \
@@ -44,12 +59,18 @@
         using t_method = t_ret(t_args...);                                          \
         std::function lambda{                                                       \
             [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }}; \
+        std::function<t_method> overrider;                                          \
+        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
+            overrider = [](t_args&&... args) -> t_ret {                             \
+            };                                                                      \
+        }                                                                           \
         return get_facade_instance().call_method<t_ret>(                            \
             lambda, #_NAME, std::forward<t_args>(args)...);                         \
     }
 
 // TODO : improve this, callback invokers should (probably) be added on construction
 #define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                            \
 public:                                                                             \
     using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                    \
                                                                                     \
@@ -75,6 +96,13 @@ public:                                                                         
     {                                                                               \
         auto& func = m_cbk_func_##_NAME;                                            \
         if (!func) return;                                                          \
+        using t_method = _RET(__VA_ARGS__);                                         \
+        std::function<t_method> overrider;                                          \
+        if constexpr (FACADE_HAS_MEMBER(t_impl_type, override_##_NAME)) {           \
+            overrider = [](auto&&... args) -> _RET {                                \
+                return override_##_NAME(args...);                                   \
+            };                                                                      \
+        }                                                                           \
         ::facade::invoke_callback<decltype(func), _RET, ##__VA_ARGS__>(func, call); \
     }
 
@@ -303,7 +331,7 @@ namespace facade
             return m_callbacks;
         }
 
-        virtual void invoke_callback(const function_call& callback) override
+        void invoke_callback(const function_call& callback) override
         {
             const auto it = m_callback_invokers.find(callback.function_name);
             // callback invoker for this callback is not found
@@ -547,10 +575,7 @@ namespace facade
         {
         }
 
-        facade(std::string name)
-            : facade_base(std::move(name), true)
-        {
-        }
+        facade(std::string name) : facade_base(std::move(name), true) {}
     };
 }  // namespace facade
 

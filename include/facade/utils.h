@@ -1,8 +1,13 @@
+#pragma once
 #include <chrono>
 #include <iostream>
 
 namespace facade
 {
+    using t_duration = std::chrono::microseconds;
+    using t_highres_timepoint =
+        std::chrono::time_point<std::chrono::high_resolution_clock>;
+
     namespace utils
     {
         namespace traits
@@ -54,6 +59,22 @@ namespace facade
             }
         };
 
+        inline auto get_offset_from_origin(const t_highres_timepoint& origin)
+        {
+            return std::chrono::duration_cast<t_duration>(
+                std::chrono::high_resolution_clock::now() - origin);
+        }
+
+        inline void sleep_until(
+            const t_highres_timepoint& origin,
+            const t_duration& that_offset_form_origin)
+        {
+            const auto this_offset = get_offset_from_origin(origin);
+            const auto diff = that_offset_form_origin - this_offset;
+            if (diff < t_duration::zero()) return;
+            std::this_thread::sleep_for(diff);
+        }
+
         template <typename t_visitor>
         inline void visit_args_impl(t_visitor&)
         {
@@ -89,3 +110,20 @@ namespace facade
         }
     }  // namespace utils
 }  // namespace facade
+
+// Check for any member function with given name
+#define FACADE_CREATE_MEMBER_CHECK(_NAME)                                               \
+    template <typename t_class, typename enabled = void>                                \
+    struct has_member_##_NAME                                                           \
+    {                                                                                   \
+        static constexpr bool value = false;                                            \
+    };                                                                                  \
+    template <typename t_class>                                                         \
+    struct has_member_##_NAME<t_class,                                                  \
+        std::enable_if_t<std::is_member_function_pointer_v<decltype(&t_class::_NAME)>>> \
+    {                                                                                   \
+        static constexpr bool value =                                                   \
+            std::is_member_function_pointer_v<decltype(&t_class::_NAME)>;               \
+    };
+
+#define FACADE_HAS_MEMBER(_TYPE, _NAME) has_member_##_NAME<_TYPE>::value

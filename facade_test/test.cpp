@@ -196,6 +196,7 @@ TEST(basic, compare_results)
 {
     using namespace test_classes;
     {
+        facade::master().set_number_of_workers(1);
         utils::delete_recording<a_class_facade>();
         facade::master().start_recording();
         // Compare recording facade with the original implementation
@@ -251,10 +252,10 @@ namespace test_classes
             if (param1 == get_singleton().m_expected_param1 &&
                 param2 == get_singleton().m_expected_param2) {
                 output = "There is some data";
-                return 1;
+                return true;
             }
             output = "No data";
-            return 0;
+            return false;
         }
 
         static singleton& get_singleton()
