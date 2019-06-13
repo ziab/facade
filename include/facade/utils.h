@@ -114,6 +114,12 @@ namespace facade
         {
             using type = t_input_type;
         };
+
+        template <typename t_ret, typename ...t_args>
+        struct get_decay_function_signature
+        {
+            using type = t_ret(typename std::decay<t_args>::type...);
+        };
     }  // namespace utils
 }  // namespace facade
 
