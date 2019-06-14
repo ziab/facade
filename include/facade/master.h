@@ -3,13 +3,23 @@
 #pragma once
 #include <chrono>
 #include <condition_variable>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef __cpp_lib_filesystem
+#include <filesystem>
+#else
+#include <experimental/filesystem>
+namespace std
+{
+    // Map std::filesystem to std::experimental::filesystem for those who have older compilers
+    namespace filesystem = std::experimental::filesystem;
+}  // namespace std
+#endif
 
 #include "utils.h"
 #include "worker_pool.h"
