@@ -73,47 +73,47 @@ public:
     }
 
 // TODO : improve this, callback invokers should (probably) be added on construction
-#define FACADE_CALLBACK(_NAME, _RET, ...)                                             \
-    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                              \
-public:                                                                               \
-    using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                      \
-                                                                                      \
-private:                                                                              \
-    t_cbk_func_##_NAME m_cbk_func_##_NAME;                                            \
-                                                                                      \
-public:                                                                               \
-    void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)                     \
-    {                                                                                 \
-        t_lock_guard lg(m_mtx);                                                       \
-        m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) {   \
-            invoke_##_NAME(call);                                                     \
-        };                                                                            \
-        m_cbk_func_##_NAME = cbk;                                                     \
-    }                                                                                 \
-                                                                                      \
-    std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                           \
-    {                                                                                 \
-        return create_callback_wrapper<_RET, t_cbk_func_##_NAME, ##__VA_ARGS__>(      \
-            m_cbk_func_##_NAME, #_NAME);                                              \
-    }                                                                                 \
-    void invoke_##_NAME(const ::facade::function_call& call)                          \
-    {                                                                                 \
-        const auto& cbk = m_cbk_func_##_NAME;                                         \
-        if (!cbk) return;                                                             \
-        using t_decayed_function =                                                    \
-            ::facade::utils::get_decay_function_signature<_RET, ##__VA_ARGS__>::type; \
-        std::function<t_decayed_function> overrider;                                  \
-        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
-            overrider = [this](auto&&... args) -> _RET {                              \
-                return override_##_NAME(args...);                                     \
-            };                                                                        \
-        }                                                                             \
-        ::facade::function_call_context ctx{cbk, std::move(overrider)};               \
-        ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);     \
+#define FACADE_CALLBACK(_NAME, _RET, ...)                                           \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                            \
+public:                                                                             \
+    using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                    \
+                                                                                    \
+private:                                                                            \
+    t_cbk_func_##_NAME m_cbk_func_##_NAME;                                          \
+                                                                                    \
+public:                                                                             \
+    void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)                   \
+    {                                                                               \
+        t_lock_guard lg(m_mtx);                                                     \
+        m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) { \
+            invoke_##_NAME(call);                                                   \
+        };                                                                          \
+        m_cbk_func_##_NAME = cbk;                                                   \
+    }                                                                               \
+                                                                                    \
+    std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                         \
+    {                                                                               \
+        return create_callback_wrapper<_RET, t_cbk_func_##_NAME, ##__VA_ARGS__>(    \
+            m_cbk_func_##_NAME, #_NAME);                                            \
+    }                                                                               \
+    void invoke_##_NAME(const ::facade::function_call& call)                        \
+    {                                                                               \
+        const auto& cbk = m_cbk_func_##_NAME;                                       \
+        if (!cbk) return;                                                           \
+        using t_decayed_function =                                                  \
+            ::facade::utils::get_non_cv_ref_signature<_RET, ##__VA_ARGS__>::type;   \
+        std::function<t_decayed_function> overrider;                                \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {           \
+            overrider = [this](auto&... args) -> _RET {                             \
+                return override_##_NAME(args...);                                   \
+            };                                                                      \
+        }                                                                           \
+        ::facade::function_call_context ctx{cbk, std::move(overrider)};             \
+        ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);   \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                             \
-    using t_this_type = typename ::facade::utils::get_type<_NAME>::type;      \
+    using t_this_type = _NAME;                                                \
     _NAME(std::unique_ptr<t_impl_type> ptr) : facade(#_NAME, true)            \
     {                                                                         \
         m_impl = ptr.release();                                               \
@@ -131,7 +131,7 @@ public:                                                                         
     }
 
 #define FACADE_SINGLETON_CONSTRUCTOR(_NAME)                                   \
-    using t_this_type = typename ::facade::utils::get_type<_NAME>::type;      \
+    using t_this_type = _NAME;                                                \
                                                                               \
 private:                                                                      \
     _NAME() : facade(#_NAME, false) {}                                        \
