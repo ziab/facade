@@ -62,10 +62,9 @@ public:
         std::function method{                                                         \
             [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};   \
         std::function<t_method> overrider;                                            \
-        auto& instance = t_this_type::get_facade_instance();                          \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
-            overrider = [&instance](t_args&&... args) -> t_ret {                      \
-                return instance.override_##_NAME(args...);                            \
+            overrider = [](t_args&&... args) -> t_ret {                               \
+                return t_this_type::override_##_NAME(args...);                        \
             };                                                                        \
         }                                                                             \
         ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
