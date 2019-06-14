@@ -3,7 +3,6 @@
 #pragma once
 #include <any>
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <list>
@@ -62,7 +61,7 @@ public:
         std::function method{                                                         \
             [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};   \
         std::function<t_method> overrider;                                            \
-        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
+        if constexpr (FACADE_HAS_STATIC(t_this_type, override_##_NAME)) {             \
             overrider = [](t_args&&... args) -> t_ret {                               \
                 return override_##_NAME(args...);                                     \
             };                                                                        \

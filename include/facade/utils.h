@@ -33,6 +33,13 @@ namespace facade
 
             template<class t_ret, class t_type, class... t_args>
             struct is_pointer_to_const_member_function<t_ret(t_type::*)(t_args..., ...) const &&> : std::true_type {};
+
+            template<class t_type>
+            struct is_pointer_to_static_function : std::false_type {};
+
+            template<class t_ret, class... t_args>
+            struct is_pointer_to_static_function<t_ret(*)(t_args...)> : std::true_type {};
+
             // clang-format on
         }  // namespace traits
 
@@ -66,8 +73,7 @@ namespace facade
         }
 
         inline void sleep_until(
-            const t_highres_timepoint& origin,
-            const t_duration& that_offset_form_origin)
+            const t_highres_timepoint& origin, const t_duration& that_offset_form_origin)
         {
             const auto this_offset = get_offset_from_origin(origin);
             const auto diff = that_offset_form_origin - this_offset;
@@ -109,7 +115,7 @@ namespace facade
             visit_args(tp, std::forward<t_args>(args)...);
         }
 
-        template <typename t_ret, typename ...t_args>
+        template <typename t_ret, typename... t_args>
         struct get_non_cv_ref_signature
         {
             using type = t_ret(typename std::decay<t_args>::type&...);
@@ -130,6 +136,21 @@ namespace facade
     {                                                                                   \
         static constexpr bool value =                                                   \
             std::is_member_function_pointer_v<decltype(&t_class::_NAME)>;               \
+    };                                                                                  \
+    template <typename t_class, typename enabled = void>                                \
+    struct has_static_##_NAME                                                           \
+    {                                                                                   \
+        static constexpr bool value = false;                                            \
+    };                                                                                  \
+    template <typename t_class>                                                         \
+    struct has_static_##_NAME<t_class,                                                  \
+        std::enable_if_t<::facade::utils::traits::is_pointer_to_static_function<        \
+            decltype(&t_class::_NAME)>::value>>                                         \
+    {                                                                                   \
+        static constexpr bool value =                                                   \
+            ::facade::utils::traits::is_pointer_to_static_function<decltype(            \
+                &t_class::_NAME)>::value;                                               \
     };
 
 #define FACADE_HAS_MEMBER(_TYPE, _NAME) has_member_##_NAME<_TYPE>::value
+#define FACADE_HAS_STATIC(_TYPE, _NAME) has_static_##_NAME<_TYPE>::value

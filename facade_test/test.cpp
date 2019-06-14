@@ -260,6 +260,12 @@ namespace test_classes
             return false;
         }
 
+        static bool function_to_override(bool param1, int param2, std::string& output)
+        {
+            output = "original";
+            return false;
+        }
+
         static singleton& get_singleton()
         {
             static singleton instance;
@@ -274,6 +280,14 @@ namespace test_classes
         FACADE_STATIC_METHOD(no_input_function);
         FACADE_METHOD(const_no_input_function);
         FACADE_STATIC_METHOD(input_output_function);
+
+        FACADE_STATIC_METHOD(function_to_override);
+        static bool override_function_to_override(bool param1, int param2, std::string& output)
+        {
+            output = "overridden";
+            return false;
+        }
+
     };
 }  // namespace test_classes
 
@@ -297,6 +311,17 @@ void compare_result(
     ASSERT_EQ(a_string, b_string);
     a_string.clear();
     b_string.clear();
+
+    // just call the function to record the output, don't compare the results because they should be different
+    facade.function_to_override(1, 42, a_string);
+    a_string.clear();
+}
+
+void check_overrider(test_classes::singleton_facade& facade) 
+{
+    std::string str;
+    facade.function_to_override(1, 42, str);
+    ASSERT_EQ(str, "overridden") << "function call parameter was not overridden";
 }
 
 TEST(singleton, compare_results)
@@ -331,6 +356,7 @@ TEST(singleton, compare_results)
         singleton_facade_inst.register_facade();
 
         compare_result(singleton_facade_inst, impl);
+        check_overrider(singleton_facade_inst);
         // utils::print_json(facade_recording_file);
         singleton_facade_inst.unregister_facade();
         facade::master().stop();
@@ -353,7 +379,7 @@ namespace test_overrider
     public:
         a_class(){};
 
-        bool input_output_function(
+        int input_output_function(
             const bool param1, const int param2, std::string& output)
         {
             // modify parameters so we can test the overrider function later
@@ -361,10 +387,10 @@ namespace test_overrider
 
             if (param1 == m_expected_param1 && param2 == m_expected_param2) {
                 output = "There is some data";
-                return true;
+                return 1;
             }
             output = "No data";
-            return false;
+            return 0;
         }
 
         void register_callback(const std::function<t_cbk>& cbk) { m_cbk = cbk; }
@@ -376,11 +402,11 @@ namespace test_overrider
         FACADE_CONSTRUCTOR(a_class_facade);
 
         FACADE_METHOD(input_output_function);
-        bool override_input_output_function(
+        int override_input_output_function(
             const bool param1, const int param2, std::string& output)
         {
             output = "There is some data overriden";
-            return true;
+            return 2;
         }
 
         FACADE_CALLBACK(callback, bool, const bool, const int, const std::string&);
@@ -419,8 +445,9 @@ void check(test_overrider::a_class_facade& facade)
 {
     namespace t = test_overrider;
     std::string str;
-    facade.input_output_function(true, 42, str);
+    auto val = facade.input_output_function(true, 42, str);
     ASSERT_EQ(str, "There is some data overriden") << "function call parameter was not overridden";
+    ASSERT_EQ(val, 2) << "return value was not overridden";
 }
 
 TEST(overrider, basic)
