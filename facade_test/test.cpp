@@ -64,10 +64,10 @@ namespace test_classes
                 if (m_input_output_function_cbk) {
                     m_input_output_function_cbk(param1, param2, output);
                 }
-                return 1;
+                return true;
             }
             output = "No data";
-            return 0;
+            return false;
         }
         template <typename T1, typename T2>
         std::string template_function(T1 t1, T2 t2)
@@ -231,6 +231,8 @@ TEST(basic, compare_results)
         compare_result(facade, original);
         test_exceptions(facade);
         utils::print_json(facade::master().make_recording_path(facade));
+        facade::master().wait_all_pending_callbacks_replayed();
+        facade::master().stop();
     }
 }
 
@@ -275,8 +277,8 @@ namespace test_classes
     };
 }  // namespace test_classes
 
-
-void compare_result(test_classes::singleton_facade& facade, test_classes::singleton& original)
+void compare_result(
+    test_classes::singleton_facade& facade, test_classes::singleton& original)
 {
     namespace t = test_classes;
     ASSERT_EQ(
@@ -307,6 +309,7 @@ TEST(singleton, compare_results)
     std::filesystem::remove(facade_recording_file, ec);
 
     {
+        facade::master().set_number_of_workers(1);
         facade::master().start_recording();
         // Compare recording facade with the original implementation
         auto& impl = singleton::get_singleton();
@@ -328,8 +331,128 @@ TEST(singleton, compare_results)
         singleton_facade_inst.register_facade();
 
         compare_result(singleton_facade_inst, impl);
-        //utils::print_json(facade_recording_file);
+        // utils::print_json(facade_recording_file);
         singleton_facade_inst.unregister_facade();
+        facade::master().stop();
+    }
+}
+
+namespace test_overrider
+{
+    class a_class
+    {
+    public:
+        using t_cbk = bool(bool param1, int param2, const std::string& param3);
+
+    private:
+        const bool m_expected_param1{true};
+        const int m_expected_param2{42};
+
+        std::function<t_cbk> m_cbk;
+
+    public:
+        a_class(){};
+
+        bool input_output_function(
+            const bool param1, const int param2, std::string& output)
+        {
+            // modify parameters so we can test the overrider function later
+            if (m_cbk) m_cbk(!param1, param2 * 2, "original");
+
+            if (param1 == m_expected_param1 && param2 == m_expected_param2) {
+                output = "There is some data";
+                return true;
+            }
+            output = "No data";
+            return false;
+        }
+
+        void register_callback(const std::function<t_cbk>& cbk) { m_cbk = cbk; }
+    };
+
+    class a_class_facade : public facade::facade<a_class>
+    {
+    public:
+        FACADE_CONSTRUCTOR(a_class_facade);
+
+        FACADE_METHOD(input_output_function);
+        bool override_input_output_function(
+            const bool param1, const int param2, std::string& output)
+        {
+            output = "There is some data overriden";
+            return true;
+        }
+
+        FACADE_CALLBACK(callback, bool, const bool, const int, const std::string&);
+        bool override_callback(bool& param1, int& param2, std::string& param3)
+        {
+            param1 = !param1;
+            param2 /= 2;
+            param3 = "overridden";
+            return true;
+        }
+    };
+
+    bool g_recording = false;
+    bool g_callback_test_is_ok = true;
+
+    bool callback(bool param1, int param2, const std::string& param3)
+    {
+        if (!g_recording) {
+            if (param1 != true || param2 != 42 || param3 != "overridden") {
+                g_callback_test_is_ok = false;
+            }
+        }
+        return true;
+    }
+
+}  // namespace test_overrider
+
+void use(test_overrider::a_class_facade& facade)
+{
+    namespace t = test_overrider;
+    std::string str;
+    facade.input_output_function(true, 42, str);
+}
+
+void check(test_overrider::a_class_facade& facade)
+{
+    namespace t = test_overrider;
+    std::string str;
+    facade.input_output_function(true, 42, str);
+    ASSERT_EQ(str, "There is some data overriden") << "function call parameter was not overridden";
+}
+
+TEST(overrider, basic)
+{
+    using namespace test_overrider;
+    {
+        facade::master().set_number_of_workers(1);
+        utils::delete_recording<a_class_facade>();
+
+        test_overrider::g_recording = true;
+        facade::master().start_recording();
+
+        a_class_facade facade{std::make_unique<a_class>()};
+
+        facade.rewire_callbacks([](a_class& impl, a_class_facade& facade) {
+            impl.register_callback(facade.get_callback_callback());
+            facade.register_callback_callback(callback);
+        });
+
+        use(facade);
+    }
+    {
+        test_overrider::g_recording = false;
+        facade::master().start_playing();
+        a_class_facade facade;
+        facade.register_callback_callback(callback);
+
+        check(facade);
+
+        facade::master().wait_all_pending_callbacks_replayed();
+        facade::master().stop();
+        ASSERT_TRUE(g_callback_test_is_ok) << "callback parameters were not overridden";
     }
 }
 

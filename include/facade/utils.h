@@ -108,6 +108,12 @@ namespace facade
             type_printer tp;
             visit_args(tp, std::forward<t_args>(args)...);
         }
+
+        template <typename t_ret, typename ...t_args>
+        struct get_non_cv_ref_signature
+        {
+            using type = t_ret(typename std::decay<t_args>::type&...);
+        };
     }  // namespace utils
 }  // namespace facade
 
