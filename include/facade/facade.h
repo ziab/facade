@@ -64,7 +64,7 @@ public:
         std::function<t_method> overrider;                                            \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
             overrider = [](t_args&&... args) -> t_ret {                               \
-                return t_this_type::override_##_NAME(args...);                        \
+                return override_##_NAME(args...);                                     \
             };                                                                        \
         }                                                                             \
         ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
