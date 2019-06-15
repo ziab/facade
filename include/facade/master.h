@@ -190,6 +190,7 @@ namespace facade
         std::thread m_player_thread;
 
         facade_mode m_mode{facade_mode::passthrough};
+        bool m_override_arguments{true};
 
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_unique_lock = std::unique_lock<decltype(m_mtx)>;
@@ -298,7 +299,10 @@ namespace facade
         bool is_playing() const { return m_mode == facade_mode::playing; }
         bool is_recording() const { return m_mode == facade_mode::recording; }
 
-        std::filesystem::path make_recording_path(const facade_interface& facade)
+        bool is_overriding_arguments() const { return m_override_arguments; }
+        void override_arguments(const bool enabled) { m_override_arguments = enabled; }
+
+        std::filesystem::path make_recording_path(const facade_interface& facade) const 
         {
             return std::filesystem::path{m_recording_dir} /
                 (facade.facade_name() + m_recording_file_extention);
