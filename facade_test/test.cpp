@@ -282,12 +282,12 @@ namespace test_classes
         FACADE_STATIC_METHOD(input_output_function);
 
         FACADE_STATIC_METHOD(function_to_override);
-        static bool override_function_to_override(bool param1, int param2, std::string& output)
+        static bool override_function_to_override(
+            bool param1, int param2, std::string& output)
         {
             output = "overridden";
             return false;
         }
-
     };
 }  // namespace test_classes
 
@@ -312,12 +312,13 @@ void compare_result(
     a_string.clear();
     b_string.clear();
 
-    // just call the function to record the output, don't compare the results because they should be different
+    // just call the function to record the output, don't compare the results because they
+    // should be different
     facade.function_to_override(1, 42, a_string);
     a_string.clear();
 }
 
-void check_overrider(test_classes::singleton_facade& facade) 
+void check_overrider(test_classes::singleton_facade& facade)
 {
     std::string str;
     facade.function_to_override(1, 42, str);
@@ -446,7 +447,8 @@ void check(test_overrider::a_class_facade& facade)
     namespace t = test_overrider;
     std::string str;
     auto val = facade.input_output_function(true, 42, str);
-    ASSERT_EQ(str, "There is some data overriden") << "function call parameter was not overridden";
+    ASSERT_EQ(str, "There is some data overriden")
+        << "function call parameter was not overridden";
     ASSERT_EQ(val, 2) << "return value was not overridden";
 }
 

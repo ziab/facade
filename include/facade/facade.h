@@ -42,9 +42,11 @@ public:
             [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }};    \
         std::function<t_method> overrider;                                            \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {             \
-            overrider = [this](t_args&&... args) -> t_ret {                           \
-                return override_##_NAME(args...);                                     \
-            };                                                                        \
+            if (is_overriding_arguments()) {                                          \
+                overrider = [this](t_args&&... args) -> t_ret {                       \
+                    return override_##_NAME(args...);                                 \
+                };                                                                    \
+            }                                                                         \
         }                                                                             \
         ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
         return call_method<t_ret>(                                                    \
@@ -62,9 +64,11 @@ public:
             [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};   \
         std::function<t_method> overrider;                                            \
         if constexpr (FACADE_HAS_STATIC(t_this_type, override_##_NAME)) {             \
-            overrider = [](t_args&&... args) -> t_ret {                               \
-                return override_##_NAME(args...);                                     \
-            };                                                                        \
+            if (is_overriding_arguments()) {                                          \
+                overrider = [](t_args&&... args) -> t_ret {                           \
+                    return override_##_NAME(args...);                                 \
+                };                                                                    \
+            }                                                                         \
         }                                                                             \
         ::facade::function_call_context ctx{std::move(method), std::move(overrider)}; \
         return get_facade_instance().call_method<t_ret>(                              \
@@ -103,9 +107,11 @@ public:                                                                         
             ::facade::utils::get_non_cv_ref_signature<_RET, ##__VA_ARGS__>::type;   \
         std::function<t_decayed_function> overrider;                                \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {           \
-            overrider = [this](auto&... args) -> _RET {                             \
-                return override_##_NAME(args...);                                   \
-            };                                                                      \
+            if (is_overriding_arguments()) {                                        \
+                overrider = [this](auto&... args) -> _RET {                         \
+                    return override_##_NAME(args...);                               \
+                };                                                                  \
+            }                                                                       \
         }                                                                           \
         ::facade::function_call_context ctx{cbk, std::move(overrider)};             \
         ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);   \
@@ -314,6 +320,11 @@ namespace facade
         bool is_playing() const { return master().is_playing(); }
         bool is_recording() const { return master().is_recording(); }
         bool is_passing_through() const { return master().is_passing_through(); }
+
+        static bool is_overriding_arguments()
+        {
+            return master().is_overriding_arguments();
+        }
 
         void facade_load(const std::filesystem::path& file) override
         {
