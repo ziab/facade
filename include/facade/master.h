@@ -16,7 +16,8 @@
 #include <experimental/filesystem>
 namespace std
 {
-    // Map std::filesystem to std::experimental::filesystem for those who have older compilers
+    // Map std::filesystem to std::experimental::filesystem for those who have older
+    // compilers
     namespace filesystem = std::experimental::filesystem;
 }  // namespace std
 #endif
@@ -162,12 +163,11 @@ namespace facade
 
         auto offset() const { return m_offset; }
 
-        void invoke(const t_highres_timepoint& origin) const
+        void invoke() const
         {
             auto* facade = m_facade_proxy->ref();
             // if nullptr is returned then the facade has been deleted
             if (!facade) return;
-            utils::sleep_until(origin, m_offset);
             try {
                 facade->invoke_callback(m_call);
             } catch (...) {
@@ -217,6 +217,9 @@ namespace facade
 
         void player_thread_main()
         {
+            t_duration origin = 0ms;
+            const t_duration delta = 1ms;
+
             while (true) {
                 t_unique_lock ulck(m_mtx);
                 while (m_callbacks.empty() && m_mode == facade_mode::playing) {
@@ -226,14 +229,18 @@ namespace facade
                 if (m_mode != facade_mode::playing) return;
 
                 const auto it = m_callbacks.begin();
-                auto callback_entry{std::move(*it)};
-                m_callbacks.erase(it);
-                auto origin = m_origin;
-                m_pool.submit([callback_entry, origin = std::move(origin)]() {
-                    callback_entry.invoke(origin);
-                });
 
-                m_cv.notify_all();
+                if (it->offset() <= origin) {
+                    auto callback_entry{*it};
+                    m_callbacks.erase(it);
+                    m_pool.submit([callback_entry]() { callback_entry.invoke(); });
+
+                    m_cv.notify_all();
+                    continue;
+                }
+
+                std::this_thread::sleep_for(delta);
+                origin += delta;
             }
         }
 
@@ -302,7 +309,7 @@ namespace facade
         bool is_overriding_arguments() const { return m_override_arguments; }
         void override_arguments(const bool enabled) { m_override_arguments = enabled; }
 
-        std::filesystem::path make_recording_path(const facade_interface& facade) const 
+        std::filesystem::path make_recording_path(const facade_interface& facade) const
         {
             return std::filesystem::path{m_recording_dir} /
                 (facade.facade_name() + m_recording_file_extention);
