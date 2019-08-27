@@ -224,34 +224,51 @@ namespace facade
     };
 
     template <typename t_archive>
-    struct arg_unpacker
+    class arg_unpacker
     {
-        t_archive& archive;
-        arg_unpacker(t_archive& _archive) : archive(_archive){};
+        const std::string& m_function_name;
+        t_archive& m_archive;
+
+    public:
+
+        arg_unpacker(const std::string& function_name, t_archive& archive)
+            : m_function_name(function_name), m_archive(archive)
+        {
+        }
 
         template <typename t_arg>
         void operator()(t_arg& arg)
         {
-            if constexpr (std::is_const<t_arg>::value) {
-                // If argument has costant qualifier we extract it to a dummy
-                // variable to move further through the stream.
-                // Can be optimized by skippin the field in the stream
-                typename std::decay<t_arg>::type dummy;
-                archive(dummy);
-            } else {
-                archive(arg);
+            try {
+                if constexpr (std::is_const<t_arg>::value) {
+                    // If argument has costant qualifier we extract it to a dummy
+                    // variable to move further through the stream.
+                    // Can be optimized by skipping the field in the stream
+                    typename std::decay<t_arg>::type dummy;
+                    m_archive(dummy);
+                } else {
+                    m_archive(arg);
+                }
+            } catch (std::exception& e) {
+                master::get_instance().log_message(log_message_level::error,
+                    std::string{"Failed to unpack an argument/return value of "} + m_function_name + 
+                        ", exception: " + e.what());
+            } catch (...) {
+                master::get_instance().log_message(log_message_level::error,
+                    std::string{"Failed to unpack an argument/return value of "} + m_function_name +
+                        ", unknown exception");
             }
         }
     };
 
     template <typename... t_args>
-    void unpack(const std::string& recorded, t_args&&... args)
+    void unpack(const std::string& function_name, const std::string& recorded, t_args&&... args)
     {
         if (recorded.empty()) return;
         std::stringstream ss;
         ss.str(recorded);
         t_cereal_input_archive archive{ss};
-        arg_unpacker unpacker(archive);
+        arg_unpacker unpacker{function_name, archive};
         utils::visit_args(unpacker, std::forward<t_args>(args)...);
     }
 
@@ -261,13 +278,14 @@ namespace facade
     {
         const auto& callback_result = this_call.get_next_result(result_selection::once);
         std::apply(
-            [&this_call](t_args&... args) { unpack(this_call.pre_call_args, args...); },
-            args_tuple);
+            [&this_call](t_args&... args) {
+                unpack(this_call.function_name, this_call.pre_call_args, args...);
+            }, args_tuple);
 
         constexpr const bool has_return = !std::is_same<t_ret, void>::value;
         if constexpr (has_return) {
             t_ret ret;
-            unpack(callback_result.return_value, ret);
+            unpack(this_call.function_name, callback_result.return_value, ret);
             any_ret = ret;
         }
     }
@@ -474,12 +492,13 @@ namespace facade
             const auto& this_method_call_result =
                 this_method_call_it->second.get_next_result(m_selection);
             std::this_thread::sleep_for(t_duration{this_method_call_result.duration});
-            unpack(this_method_call_result.post_call_args, std::forward<t_args>(args)...);
+            unpack(ctx.function_name, this_method_call_result.post_call_args,
+                std::forward<t_args>(args)...);
             if constexpr (!has_return) {
                 if (ctx.overrider) { ctx.overrider(std::forward<t_args>(args)...); }
             } else {
                 typename std::decay<t_ret>::type ret{};
-                unpack(this_method_call_result.return_value, ret);
+                unpack(ctx.function_name, this_method_call_result.return_value, ret);
                 if (ctx.overrider) { ret = ctx.overrider(std::forward<t_args>(args)...); }
                 return ret;
             }
@@ -528,7 +547,7 @@ namespace facade
             this_call_result.offest_from_origin = master().get_offset_from_origin();
             utils::timer timer;
             std::any ret;
-            constexpr const bool has_return = !std::is_same<t_ret, void>::value;
+            constexpr bool has_return = !std::is_same<t_ret, void>::value;
             if constexpr (has_return) {
                 ret = ctx.function(std::forward<t_args>(args)...);
                 record_args(this_call_result.return_value, std::any_cast<t_ret>(ret));
