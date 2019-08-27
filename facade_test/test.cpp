@@ -488,5 +488,10 @@ TEST(overrider, basic)
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
+    facade::master().set_log_message_callback(
+        [](facade::log_message_level level, const std::string& msg) {
+            std::cout << msg << std::endl;
+        });
+
     return RUN_ALL_TESTS();
 }

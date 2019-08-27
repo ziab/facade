@@ -3,6 +3,7 @@
 #pragma once
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -28,6 +29,16 @@ namespace std
 namespace facade
 {
     using namespace std::chrono_literals;
+
+    enum class log_message_level
+    {
+        info,
+        warning,
+        error
+    };
+
+    using t_log_message_cbk =
+        std::function<void(log_message_level level, const std::string& msg)>;
 
     enum class result_selection
     {
@@ -188,6 +199,7 @@ namespace facade
         std::chrono::time_point<std::chrono::high_resolution_clock> m_origin;
         std::multiset<scheduled_callback_entry> m_callbacks;
         std::thread m_player_thread;
+        t_log_message_cbk m_log_message_cbk;
 
         facade_mode m_mode{facade_mode::passthrough};
         bool m_override_arguments{true};
@@ -392,6 +404,17 @@ namespace facade
         }
 
         ~master() { stop(); }
+
+        void set_log_message_callback(t_log_message_cbk cbk)
+        { 
+            t_lock_guard lg{m_mtx};
+            m_log_message_cbk = cbk;
+        }
+
+        void log_message(log_message_level level, const std::string& msg) const
+        {
+            if (m_log_message_cbk) m_log_message_cbk(level, msg);
+        }
     };
 
     inline ::facade::master& master() { return ::facade::master::get_instance(); }
