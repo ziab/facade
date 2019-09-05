@@ -81,7 +81,7 @@ public:
         std::function<t_method> filter;                                                \
         if constexpr (FACADE_HAS_STATIC(t_this_type, filter_##_NAME)) {                \
             if (is_overriding_arguments()) {                                           \
-                filter = [this](t_args&&... args) -> t_ret {                           \
+                filter = [](t_args&&... args) -> t_ret {                               \
                     return filter_##_NAME(args...);                                    \
                 };                                                                     \
             }                                                                          \
@@ -573,10 +573,10 @@ namespace facade
             std::apply(ctx.filter, args_tuple);
             // bind the outpur string with the filtered args
             auto call_record_args =
-                    [this, &recorded](typename std::decay<t_args>::type&... lambda_args) {
-                record_args(recorded, std::forward<t_args>(lambda_args)...);
-            };
-            
+                [this, &recorded](typename std::decay<t_args>::type&... lambda_args) {
+                    record_args(recorded, std::forward<t_args>(lambda_args)...);
+                };
+
             std::apply(call_record_args, args_tuple);
         }
 
