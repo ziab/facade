@@ -38,23 +38,26 @@ public:
     {                                                                                   \
         using t_ret = decltype(m_impl->_NAME(args...));                                 \
         using t_method = t_ret(t_args...);                                              \
-        using t_decayed_method =                                                      \
-            typename ::facade::utils::get_non_cv_ref_signature<t_ret, t_args...>::type; \
+        using t_filter_and_record = void(std::string&, t_args...);                      \
         std::function method{                                                           \
             [this](t_args&&... args) -> t_ret { return m_impl->_NAME(args...); }};      \
-        std::function<t_method> overrider;                                    \
+        std::function<t_method> overrider;                                              \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {               \
             if (is_overriding_arguments()) {                                            \
-                overrider = [this](t_args&&... args) -> t_ret {                          \
+                overrider = [this](t_args&&... args) -> t_ret {                         \
                     return override_##_NAME(args...);                                   \
                 };                                                                      \
             }                                                                           \
         }                                                                               \
-        std::function<t_decayed_method> filter;                                       \
+        std::function<t_filter_and_record> filter;                                      \
         if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {                 \
             if (is_overriding_arguments()) {                                            \
-                filter = [this](t_args&... args) -> t_ret {                             \
+                auto filter_trampoline = [this](auto&... args) -> t_ret {               \
                     return filter_##_NAME(args...);                                     \
+                };                                                                      \
+                filter = [filter_trampoline](std::string& recording, auto&&... args) {  \
+                    ::facade::filter_args_and_record(                                   \
+                        filter_trampoline, recording, args...);                         \
                 };                                                                      \
             }                                                                           \
         }                                                                               \
@@ -63,96 +66,105 @@ public:
         return call_method<t_ret>(ctx, std::forward<t_args>(args)...);                  \
     }
 
-#define FACADE_STATIC_METHOD(_NAME)                                                     \
-    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                                \
-    template <typename... t_args>                                                       \
-    static auto _NAME(t_args&&... args)                                                 \
-    {                                                                                   \
-        using t_ret = decltype(t_impl_type::_NAME(args...));                            \
-        using t_method = t_ret(t_args...);                                              \
-        using t_decayed_method =                                                      \
-            typename ::facade::utils::get_non_cv_ref_signature<t_ret, t_args...>::type; \
-        std::function method{                                                           \
-            [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};     \
-        std::function<t_method> overrider;                                    \
-        if constexpr (FACADE_HAS_STATIC(t_this_type, override_##_NAME)) {               \
-            if (is_overriding_arguments()) {                                            \
-                overrider = [](t_args&&... args) -> t_ret {                              \
-                    return override_##_NAME(args...);                                   \
-                };                                                                      \
-            }                                                                           \
-        }                                                                               \
-        std::function<t_decayed_method> filter;                                       \
-        if constexpr (FACADE_HAS_STATIC(t_this_type, filter_##_NAME)) {                 \
-            if (is_overriding_arguments()) {                                            \
-                filter = [](t_args&... args) -> t_ret {                                 \
-                    return filter_##_NAME(args...);                                     \
-                };                                                                      \
-            }                                                                           \
-        }                                                                               \
-        ::facade::function_call_context ctx{                                            \
-            #_NAME, true, std::move(method), std::move(overrider), std::move(filter)};  \
-        return get_facade_instance().call_method<t_ret>(                                \
-            ctx, std::forward<t_args>(args)...);                                        \
+#define FACADE_STATIC_METHOD(_NAME)                                                    \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                               \
+    template <typename... t_args>                                                      \
+    static auto _NAME(t_args&&... args)                                                \
+    {                                                                                  \
+        using t_ret = decltype(t_impl_type::_NAME(args...));                           \
+        using t_method = t_ret(t_args...);                                             \
+        using t_filter_and_record = void(std::string&, t_args...);                     \
+        std::function method{                                                          \
+            [](t_args&&... args) -> t_ret { return t_impl_type::_NAME(args...); }};    \
+        std::function<t_method> overrider;                                             \
+        if constexpr (FACADE_HAS_STATIC(t_this_type, override_##_NAME)) {              \
+            if (is_overriding_arguments()) {                                           \
+                overrider = [](t_args&&... args) -> t_ret {                            \
+                    return override_##_NAME(args...);                                  \
+                };                                                                     \
+            }                                                                          \
+        }                                                                              \
+        std::function<t_filter_and_record> filter;                                     \
+        if constexpr (FACADE_HAS_STATIC(t_this_type, filter_##_NAME)) {                \
+            if (is_overriding_arguments()) {                                           \
+                auto filter_trampoline = [](auto&... args) -> t_ret {                  \
+                    return filter_##_NAME(args...);                                    \
+                };                                                                     \
+                filter = [filter_trampoline](std::string& recording, auto&&... args) { \
+                    ::facade::filter_args_and_record(                                  \
+                        filter_trampoline, recording, args...);                        \
+                };                                                                     \
+            }                                                                          \
+        }                                                                              \
+        ::facade::function_call_context ctx{                                           \
+            #_NAME, true, std::move(method), std::move(overrider), std::move(filter)}; \
+        return get_facade_instance().call_method<t_ret>(                               \
+            ctx, std::forward<t_args>(args)...);                                       \
     }
 
 // TODO : improve this, callback invokers should (probably) be added on construction
-#define FACADE_CALLBACK(_NAME, _RET, ...)                                                \
-    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                                 \
-public:                                                                                  \
-    using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                         \
-                                                                                         \
-private:                                                                                 \
-    t_cbk_func_##_NAME m_cbk_func_##_NAME;                                               \
-                                                                                         \
-public:                                                                                  \
-    void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)                        \
-    {                                                                                    \
-        t_lock_guard lg(m_mtx);                                                          \
-        m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) {      \
-            invoke_##_NAME(call);                                                        \
-        };                                                                               \
-        m_cbk_func_##_NAME = cbk;                                                        \
-    }                                                                                    \
-                                                                                         \
-    std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                              \
-    {                                                                                    \
-        using t_decayed_function =                                                       \
-            ::facade::utils::get_non_cv_ref_signature<_RET, ##__VA_ARGS__>::type;        \
-        auto method = [this](auto&&... args) -> _RET {                                   \
-            return m_cbk_func_##_NAME(args...);                                          \
-        };                                                                               \
-        std::function<t_decayed_function> filter;                                        \
-        if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {                  \
-            if (is_overriding_arguments()) {                                             \
-                filter = [this](                                                         \
-                             auto&... args) -> _RET { return filter_##_NAME(args...); }; \
-            }                                                                            \
-        }                                                                                \
-        std::string name = #_NAME;                                                       \
-        ::facade::function_call_context ctx{#_NAME, false, method,                       \
-            std::function<t_decayed_function>{}, std::move(filter)};                     \
-        return create_callback_wrapper<_RET, decltype(ctx), ##__VA_ARGS__>(ctx);         \
-    }                                                                                    \
-                                                                                         \
-    void invoke_##_NAME(const ::facade::function_call& call)                             \
-    {                                                                                    \
-        const auto& cbk = m_cbk_func_##_NAME;                                            \
-        if (!cbk) return;                                                                \
-        using t_decayed_function =                                                       \
-            ::facade::utils::get_non_cv_ref_signature<_RET, ##__VA_ARGS__>::type;        \
-        std::function<t_decayed_function> overrider;                                     \
-        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {                \
-            if (is_overriding_arguments()) {                                             \
-                overrider = [this](auto&... args) -> _RET {                              \
-                    return override_##_NAME(args...);                                    \
-                };                                                                       \
-            }                                                                            \
-        }                                                                                \
-        std::string name = #_NAME;                                                       \
-        ::facade::function_call_context ctx{std::move(name), false, cbk,                 \
-            std::move(overrider), std::function<t_decayed_function>{}};                  \
-        ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);        \
+#define FACADE_CALLBACK(_NAME, _RET, ...)                                              \
+    FACADE_CHECK_OPTIONAL_METHODS(_NAME)                                               \
+public:                                                                                \
+    using t_cbk_func_##_NAME = std::function<_RET(__VA_ARGS__)>;                       \
+                                                                                       \
+private:                                                                               \
+    t_cbk_func_##_NAME m_cbk_func_##_NAME;                                             \
+                                                                                       \
+public:                                                                                \
+    void register_callback_##_NAME(const t_cbk_func_##_NAME& cbk)                      \
+    {                                                                                  \
+        t_lock_guard lg(m_mtx);                                                        \
+        m_callback_invokers[#_NAME] = [this](const ::facade::function_call& call) {    \
+            invoke_##_NAME(call);                                                      \
+        };                                                                             \
+        m_cbk_func_##_NAME = cbk;                                                      \
+    }                                                                                  \
+                                                                                       \
+    std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                            \
+    {                                                                                  \
+        using t_filter_and_record = void(std::string&, ##__VA_ARGS__);                 \
+        auto method = [this](auto&&... args) -> _RET {                                 \
+            return m_cbk_func_##_NAME(args...);                                        \
+        };                                                                             \
+        std::function<t_filter_and_record> filter;                                     \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {                \
+            if (is_overriding_arguments()) {                                           \
+                auto filter_trampoline = [this](auto&... args) -> _RET {               \
+                    if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {    \
+                        return filter_##_NAME(args...);                                \
+                    }                                                                  \
+                };                                                                     \
+                filter = [filter_trampoline](std::string& recording, auto&&... args) { \
+                    ::facade::filter_args_and_record(                                  \
+                        filter_trampoline, recording, args...);                        \
+                };                                                                     \
+            }                                                                          \
+        }                                                                              \
+        std::string name = #_NAME;                                                     \
+        ::facade::function_call_context ctx{#_NAME, false, method,                     \
+            std::function<t_filter_and_record>{}, std::move(filter)};                  \
+        return create_callback_wrapper<_RET, decltype(ctx), ##__VA_ARGS__>(ctx);       \
+    }                                                                                  \
+                                                                                       \
+    void invoke_##_NAME(const ::facade::function_call& call)                           \
+    {                                                                                  \
+        const auto& cbk = m_cbk_func_##_NAME;                                          \
+        if (!cbk) return;                                                              \
+        using t_decayed_function =                                                     \
+            ::facade::utils::get_non_cv_ref_signature<_RET, ##__VA_ARGS__>::type;      \
+        std::function<t_decayed_function> overrider;                                   \
+        if constexpr (FACADE_HAS_MEMBER(t_this_type, override_##_NAME)) {              \
+            if (is_overriding_arguments()) {                                           \
+                overrider = [this](auto&... args) -> _RET {                            \
+                    return override_##_NAME(args...);                                  \
+                };                                                                     \
+            }                                                                          \
+        }                                                                              \
+        std::string name = #_NAME;                                                     \
+        ::facade::function_call_context ctx{std::move(name), false, cbk,               \
+            std::move(overrider), std::function<t_decayed_function>{}};                \
+        ::facade::invoke_callback<decltype(ctx), _RET, ##__VA_ARGS__>(ctx, call);      \
     }
 
 #define FACADE_CONSTRUCTOR(_NAME)                                             \
@@ -351,6 +363,34 @@ namespace facade
         }
     }
 
+    template <typename... t_args>
+    void record_args(std::string& recorded, t_args&&... args)
+    {
+        std::stringstream ss;
+        {
+            t_cereal_output_archive archive{ss};
+            utils::visit_args(archive, std::forward<t_args>(args)...);
+        }
+        recorded = ss.str();
+    }
+
+    template <typename t_filter_func, typename... t_args>
+    void filter_args_and_record(
+        t_filter_func& filter, std::string& recorded, t_args&&... args)
+    {
+        // make a copy of arguments so we don't modify the source
+        auto args_tuple = std::make_tuple(args...);
+        // filter the copies
+        std::apply(filter, args_tuple);
+        // bind the outpur string with the filtered args
+        auto call_record_args = [&recorded](
+                                    typename std::decay<t_args>::type&... lambda_args) {
+            record_args(recorded, std::forward<t_args>(lambda_args)...);
+        };
+
+        std::apply(call_record_args, args_tuple);
+    }
+
     inline std::string calculate_hash(const std::string& data)
     {
         return t_hasher{}.absorb(data).hexdigest();
@@ -482,17 +522,6 @@ namespace facade
         t_type* m_impl{nullptr};
 
         template <typename... t_args>
-        void record_args(std::string& recorded, t_args&&... args)
-        {
-            std::stringstream ss;
-            {
-                t_cereal_output_archive archive{ss};
-                utils::visit_args(archive, std::forward<t_args>(args)...);
-            }
-            recorded = ss.str();
-        }
-
-        template <typename... t_args>
         void restore_args(std::string& recorded, t_args&&... args)
         {
             std::stringstream ss{recorded};
@@ -579,17 +608,7 @@ namespace facade
                 return;
             }
 
-            // make a copy of arguments so we don't modify the source
-            auto args_tuple = std::make_tuple(args...);
-            // filter the copies
-            std::apply(ctx.filter, args_tuple);
-            // bind the outpur string with the filtered args
-            auto call_record_args =
-                [this, &recorded](typename std::decay<t_args>::type&... lambda_args) {
-                    record_args(recorded, std::forward<t_args>(lambda_args)...);
-                };
-
-            std::apply(call_record_args, args_tuple);
+            ctx.filter(recorded, std::forward<t_args>(args)...);
         }
 
         template <typename t_ret, typename t_ctx, typename... t_args>
