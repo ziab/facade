@@ -121,6 +121,7 @@ public:                                                                         
         m_cbk_func_##_NAME = cbk;                                                      \
     }                                                                                  \
                                                                                        \
+    template <typename t_type = void>                                                  \
     std::function<_RET(__VA_ARGS__)> get_callback_##_NAME()                            \
     {                                                                                  \
         using t_filter_and_record = void(std::string&, ##__VA_ARGS__);                 \
@@ -131,9 +132,7 @@ public:                                                                         
         if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {                \
             if (is_overriding_arguments()) {                                           \
                 auto filter_trampoline = [this](auto&... args) -> _RET {               \
-                    if constexpr (FACADE_HAS_MEMBER(t_this_type, filter_##_NAME)) {    \
-                        return filter_##_NAME(args...);                                \
-                    }                                                                  \
+                    return filter_##_NAME(args...);                                    \
                 };                                                                     \
                 filter = [filter_trampoline](std::string& recording, auto&&... args) { \
                     ::facade::filter_args_and_record(                                  \
