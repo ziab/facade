@@ -3,6 +3,7 @@
 #pragma once
 #include <chrono>
 #include <condition_variable>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -39,6 +40,9 @@ namespace facade
 
     using t_log_message_cbk =
         std::function<void(log_message_level level, const std::string& msg)>;
+
+    using t_get_facade_stream_cbk =
+        std::function<std::ofstream*(const std::string& facade_name)>;
 
     enum class result_selection
     {
@@ -92,8 +96,8 @@ namespace facade
     protected:
         // These prefixes are added mainly to avoid method name clashing with
         // methods in the original class implementation
-        virtual void facade_save(const std::filesystem::path& path) = 0;
-        virtual void facade_load(const std::filesystem::path& path) = 0;
+        virtual void facade_save(std::ostream& stream) = 0;
+        virtual void facade_load(std::istream& stream) = 0;
         virtual void facade_clear() = 0;
         virtual const std::string& facade_name() const = 0;
         virtual const std::list<function_call>& get_callbacks() const = 0;
@@ -200,6 +204,7 @@ namespace facade
         std::multiset<scheduled_callback_entry> m_callbacks;
         std::thread m_player_thread;
         t_log_message_cbk m_log_message_cbk;
+        t_get_facade_stream_cbk m_get_facade_stream_cbk;
 
         facade_mode m_mode{facade_mode::passthrough};
         bool m_override_arguments{true};
@@ -207,14 +212,14 @@ namespace facade
         using t_lock_guard = std::lock_guard<decltype(m_mtx)>;
         using t_unique_lock = std::unique_lock<decltype(m_mtx)>;
 
-        void initialize(facade_interface& facade)
+        void initialize(facade_interface& facade) const
         {
-            if (is_playing()) { facade.facade_load(make_recording_path(facade)); }
+            if (is_playing()) { load_recording(facade); }
         }
 
-        void finalize(facade_interface& facade)
+        void finalize(facade_interface& facade) const
         {
-            if (is_recording()) { facade.facade_save(make_recording_path(facade)); }
+            if (is_recording()) { save_recording(facade); }
             facade.facade_clear();
         }
 
@@ -256,6 +261,37 @@ namespace facade
             }
         }
 
+        void save_recording(facade_interface& facade) const
+        {
+            if (m_get_facade_stream_cbk) {
+                auto* stream = m_get_facade_stream_cbk(facade.facade_name());
+                if (stream) { facade.facade_save(*stream); }
+            } else {
+                const auto path = make_recording_path(facade);
+                std::ofstream ofs(path);
+                facade.facade_save(ofs);
+            }
+        }
+
+        void load_recording(facade_interface& facade) const
+        {
+            const auto path = make_recording_path(facade);
+
+            std::error_code ec;
+            if (!std::filesystem::exists(path, ec)) {
+                throw std::runtime_error{
+                    std::string{"a recording file doesn't exist: "} + path.string()};
+            }
+
+            std::ifstream ifs{path};
+            if (!ifs.is_open()) {
+                throw std::runtime_error{
+                    std::string{"failed to load a recording: "} + path.string()};
+            }
+
+            facade.facade_load(ifs);
+        }
+
     protected:
         void register_facade(facade_interface* facade)
         {
@@ -292,8 +328,7 @@ namespace facade
             for (const auto& [_unused, facade_proxy_shptr] : m_facades) {
                 if (!facade_proxy_shptr) continue;
                 auto& facade = **facade_proxy_shptr;
-                const auto path = make_recording_path(facade);
-                facade.facade_save(path);
+                save_recording(facade);
                 facade.facade_clear();
             }
         }
@@ -306,7 +341,7 @@ namespace facade
                 auto& facade = **facade_proxy_shptr;
                 const auto path = make_recording_path(facade);
                 facade.facade_clear();
-                facade.facade_load(path);
+                load_recording(facade);
                 unprotected_register_callbacks(facade_proxy_shptr);
             }
         }
@@ -406,7 +441,7 @@ namespace facade
         ~master() { stop(); }
 
         void set_log_message_callback(t_log_message_cbk cbk)
-        { 
+        {
             t_lock_guard lg{m_mtx};
             m_log_message_cbk = cbk;
         }
@@ -414,6 +449,12 @@ namespace facade
         void log_message(log_message_level level, const std::string& msg) const
         {
             if (m_log_message_cbk) m_log_message_cbk(level, msg);
+        }
+
+        void set_get_facade_stream_callback(t_get_facade_stream_cbk cbk)
+        {
+            t_lock_guard lg{m_mtx};
+            m_get_facade_stream_cbk = cbk;
         }
     };
 

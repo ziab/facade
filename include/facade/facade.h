@@ -431,20 +431,10 @@ namespace facade
             return master().is_overriding_arguments();
         }
 
-        void facade_load(const std::filesystem::path& file) override
+        void facade_load(std::istream& stream) override
         {
-            std::error_code ec;
-            if (!std::filesystem::exists(file, ec)) {
-                throw std::runtime_error{
-                    std::string{"a recording file doesn't exist: "} + file.string()};
-            }
             t_lock_guard lg(m_mtx);
-            std::ifstream ifs(file);
-            if (!ifs.is_open()) {
-                throw std::runtime_error{
-                    std::string{"failed to load a recording: "} + file.string()};
-            }
-            t_cereal_input_archive archive{ifs};
+            t_cereal_input_archive archive{stream};
 
             std::string name;
             archive(cereal::make_nvp("name", name));
@@ -503,11 +493,10 @@ namespace facade
     public:
         const std::string& facade_name() const override { return m_name; }
 
-        void facade_save(const std::filesystem::path& path) override
+        void facade_save(std::ostream& stream) override
         {
             t_lock_guard lg(m_mtx);
-            std::ofstream ofs(path);
-            t_cereal_output_archive archive{ofs};
+            t_cereal_output_archive archive{stream};
             archive(cereal::make_nvp("name", m_name), cereal::make_nvp("calls", m_calls),
                 cereal::make_nvp("callbacks", m_callbacks));
         }
