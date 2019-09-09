@@ -369,7 +369,8 @@ namespace test_overrider
     class a_class
     {
     public:
-        using t_cbk = bool(bool param1, int param2, const std::string& param3);
+        using t_cbk = bool(bool param1, int param2, const std::string& param3,
+            const std::string& sensitive_param);
 
     private:
         const bool m_expected_param1{true};
@@ -384,7 +385,7 @@ namespace test_overrider
             const bool param1, const int param2, std::string& output)
         {
             // modify parameters so we can test the overrider function later
-            if (m_cbk) m_cbk(!param1, param2 * 2, "original");
+            if (m_cbk) m_cbk(!param1, param2 * 2, "original", "this data is sensitive");
 
             if (param1 == m_expected_param1 && param2 == m_expected_param2) {
                 output = "There is some data";
@@ -392,6 +393,11 @@ namespace test_overrider
             }
             output = "No data";
             return 0;
+        }
+
+        int sensitive_function(int non_sensitive_data, const std::string& sensitive_data)
+        {
+            return 42;
         }
 
         void register_callback(const std::function<t_cbk>& cbk) { m_cbk = cbk; }
@@ -410,23 +416,43 @@ namespace test_overrider
             return 2;
         }
 
-        FACADE_CALLBACK(callback, bool, const bool, const int, const std::string&);
-        bool override_callback(bool& param1, int& param2, std::string& param3)
+        FACADE_METHOD(sensitive_function);
+        int filter_sensitive_function(
+            int, std::string& sensitive_data)
+        {
+            sensitive_data = "this is non sensitive data";
+            return {};
+        }
+
+        FACADE_CALLBACK(callback, bool, const bool, const int, const std::string&,
+            const std::string&);
+        bool override_callback(
+            bool& param1, int& param2, std::string& param3, const std::string&)
         {
             param1 = !param1;
             param2 /= 2;
             param3 = "overridden";
+            // the forth parameters is untoched here
             return true;
+        }
+
+        bool filter_callback(
+            bool&, int&, const std::string&, std::string& sensitive_param)
+        {
+            sensitive_param = "this is non sensitive data";
+            return {};
         }
     };
 
     bool g_recording = false;
     bool g_callback_test_is_ok = true;
 
-    bool callback(bool param1, int param2, const std::string& param3)
+    bool callback(bool param1, int param2, const std::string& param3,
+        const std::string& sensitive_param)
     {
         if (!g_recording) {
-            if (param1 != true || param2 != 42 || param3 != "overridden") {
+            if (param1 != true || param2 != 42 || param3 != "overridden" ||
+                sensitive_param == "this data is sensitive") {
                 g_callback_test_is_ok = false;
             }
         }
@@ -440,19 +466,24 @@ void use(test_overrider::a_class_facade& facade)
     namespace t = test_overrider;
     std::string str;
     facade.input_output_function(true, 42, str);
+    facade.sensitive_function(100500, std::string{"this is sensitive data"});
 }
 
 void check(test_overrider::a_class_facade& facade)
 {
     namespace t = test_overrider;
     std::string str;
-    auto val = facade.input_output_function(true, 42, str);
+    auto ret_1 = facade.input_output_function(true, 42, str);
     ASSERT_EQ(str, "There is some data overriden")
         << "function call parameter was not overridden";
-    ASSERT_EQ(val, 2) << "return value was not overridden";
+    ASSERT_EQ(ret_1, 2) << "return value was not overridden";
+
+    auto ret_2 =
+        facade.sensitive_function(100500, std::string{"this is non sensitive data"});
+    ASSERT_EQ(ret_2, 42) << "sensitive_function wasn't filtered";
 }
 
-TEST(overrider, basic)
+TEST(overrider_and_filter, basic)
 {
     using namespace test_overrider;
     {
