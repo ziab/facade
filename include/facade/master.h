@@ -42,7 +42,7 @@ namespace facade
         std::function<void(log_message_level level, const std::string& msg)>;
 
     using t_get_facade_stream_cbk =
-        std::function<std::ofstream*(const std::string& facade_name)>;
+        std::function<std::ostream*(const std::string& facade_name)>;
 
     enum class result_selection
     {
@@ -265,7 +265,7 @@ namespace facade
         {
             if (m_get_facade_stream_cbk) {
                 auto* stream = m_get_facade_stream_cbk(facade.facade_name());
-                if (stream) { facade.facade_save(*stream); }
+                if (stream) facade.facade_save(*stream);
             } else {
                 const auto path = make_recording_path(facade);
                 std::ofstream ofs(path);
